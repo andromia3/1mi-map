@@ -39,8 +39,16 @@ npm install
 
 ### 2. Database Setup
 
-1. Create a PostgreSQL database (use [Neon](https://neon.tech/) for easy setup)
-2. Copy the connection string from your database provider
+1. Create a PostgreSQL database (we use [Supabase](https://supabase.com/))
+2. Get your connection string from your database provider
+3. **For Supabase**: Reset your database password and update the DATABASE_URL
+
+**Supabase Password Reset:**
+1. Go to your Supabase project dashboard
+2. Navigate to Settings → Database
+3. Click "Reset database password"
+4. Copy the new password and URL-encode special characters
+5. Update your DATABASE_URL with the new password
 
 ### 3. Environment Variables
 
@@ -65,17 +73,28 @@ Copy-Item .env.local .env
 
 ### 4. Database Migration & Seeding
 
+**First-time setup sequence:**
 ```bash
-# Push the schema to your database
+# 1. Copy environment variables for Prisma CLI
+Copy-Item .env.local .env
+
+# 2. Deploy database schema
+npx prisma migrate deploy
+
+# 3. Seed the database with demo users
+npx prisma db seed
+```
+
+**Alternative commands:**
+```bash
+# Push schema (for development)
 npx prisma db push
 
-# Seed the database with demo users (uses .env file)
-npx prisma db seed
-# OR use the npm script
+# Seed using npm script
 npm run db:seed
 ```
 
-**Note**: Prisma seed is configured in `package.json` and uses `ts-node prisma/seed.ts`.
+**Note**: Prisma seed is configured in `package.json` and uses `ts-node prisma/seed.ts` with CommonJS module system.
 
 ### 5. Start Development Server
 
