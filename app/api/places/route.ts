@@ -11,6 +11,8 @@ const createPlaceSchema = z.object({
   lng: z.number().min(-180).max(180),
 })
 
+export const runtime = "nodejs"
+
 export async function GET() {
   try {
     const places = await prisma.place.findMany({

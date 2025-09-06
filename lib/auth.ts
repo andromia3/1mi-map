@@ -1,4 +1,4 @@
-import bcrypt from "bcrypt"
+import bcrypt from "bcryptjs"
 import { prisma } from "./prisma"
 import { getSession } from "./session"
 import { normalizeUser, type NormalizedUser } from "./types"

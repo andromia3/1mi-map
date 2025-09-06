@@ -8,6 +8,8 @@ const changePasswordSchema = z.object({
   newPassword: z.string().min(6, "New password must be at least 6 characters"),
 })
 
+export const runtime = "nodejs"
+
 export async function POST(request: NextRequest) {
   try {
     const user = await requireAuth()
@@ -51,7 +53,7 @@ export async function POST(request: NextRequest) {
 
     console.error("Change password error:", error)
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "CHANGE_PASSWORD_FAIL" },
       { status: 500 }
     )
   }

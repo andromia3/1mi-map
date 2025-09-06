@@ -9,6 +9,8 @@ const loginSchema = z.object({
   password: z.string().min(1, "Password is required"),
 })
 
+export const runtime = "nodejs"
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
@@ -42,7 +44,7 @@ export async function POST(request: NextRequest) {
 
     console.error("Login error:", error)
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "LOGIN_FAIL" },
       { status: 500 }
     )
   }
