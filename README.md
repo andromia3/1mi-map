@@ -53,6 +53,11 @@ NEXT_PUBLIC_MAPBOX_TOKEN="pk.your_mapbox_token_here"
 SESSION_PASSWORD="your-super-secret-session-password-at-least-32-characters-long"
 ```
 
+**Important**: Prisma CLI uses `.env` (not `.env.local`). For local seeding on Windows:
+```powershell
+Copy-Item .env.local .env
+```
+
 **Important**: 
 - Get your Mapbox token from [mapbox.com](https://mapbox.com)
 - Generate a strong session password (32+ characters)
@@ -64,9 +69,13 @@ SESSION_PASSWORD="your-super-secret-session-password-at-least-32-characters-long
 # Push the schema to your database
 npx prisma db push
 
-# Seed the database with demo users
+# Seed the database with demo users (uses .env file)
+npx prisma db seed
+# OR use the npm script
 npm run db:seed
 ```
+
+**Note**: Prisma seed is configured in `package.json` and uses `ts-node prisma/seed.ts`.
 
 ### 5. Start Development Server
 
