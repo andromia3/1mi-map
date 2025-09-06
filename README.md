@@ -47,7 +47,7 @@ npm install
 Create a `.env.local` file in the root directory:
 
 ```env
-DATABASE_URL="postgresql://user:pass@host/db?sslmode=require"
+DATABASE_URL="postgresql://postgres:password@aws-1-eu-west-2.pooler.supabase.com:6543/postgres?pgbouncer=true&sslmode=require"
 MAPBOX_TOKEN="pk.your_mapbox_token_here"
 NEXT_PUBLIC_MAPBOX_TOKEN="pk.your_mapbox_token_here"
 SESSION_PASSWORD="your-super-secret-session-password-at-least-32-characters-long"
