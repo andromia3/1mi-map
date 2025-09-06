@@ -1,6 +1,7 @@
 import bcrypt from "bcrypt"
 import { prisma } from "./prisma"
 import { getSession } from "./session"
+import { normalizeUser, type NormalizedUser } from "./types"
 
 export async function verifyPassword(password: string, hash: string) {
   return bcrypt.compare(password, hash)
@@ -10,7 +11,7 @@ export async function hashPassword(password: string) {
   return bcrypt.hash(password, 12)
 }
 
-export async function getCurrentUser() {
+export async function getCurrentUser(): Promise<NormalizedUser | null> {
   const session = await getSession()
   if (!session.userId) return null
 
@@ -23,10 +24,12 @@ export async function getCurrentUser() {
     },
   })
 
-  return user
+  if (!user) return null
+
+  return normalizeUser(user)
 }
 
-export async function requireAuth() {
+export async function requireAuth(): Promise<NormalizedUser> {
   const user = await getCurrentUser()
   if (!user) {
     throw new Error("Authentication required")

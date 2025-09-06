@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
 import { requireAuth } from "@/lib/auth"
+import { normalizePlace, type Place } from "@/lib/types"
 
 const createPlaceSchema = z.object({
   title: z.string().min(1, "Title is required"),
@@ -27,7 +28,8 @@ export async function GET() {
       },
     })
 
-    return NextResponse.json(places)
+    const normalizedPlaces = places.map(place => normalizePlace(place as Place))
+    return NextResponse.json(normalizedPlaces)
   } catch (error) {
     console.error("Get places error:", error)
     return NextResponse.json(
@@ -62,7 +64,8 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    return NextResponse.json(place, { status: 201 })
+    const normalizedPlace = normalizePlace(place as Place)
+    return NextResponse.json(normalizedPlace, { status: 201 })
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(

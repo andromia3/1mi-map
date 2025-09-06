@@ -11,6 +11,7 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { X } from "lucide-react"
+import { type NormalizedUser, type NormalizedPlace } from "@/lib/types"
 
 const addPlaceSchema = z.object({
   title: z.string().min(1, "Title is required"),
@@ -19,32 +20,14 @@ const addPlaceSchema = z.object({
 
 type AddPlaceFormData = z.infer<typeof addPlaceSchema>
 
-interface Place {
-  id: string
-  title: string
-  description?: string
-  lat: number
-  lng: number
-  createdBy: {
-    id: string
-    username: string
-    displayName?: string
-  }
-  createdAt: string
-}
-
 interface MapViewProps {
-  user: {
-    id: string
-    username: string
-    displayName?: string
-  }
+  user: NormalizedUser
 }
 
 export default function MapView({ user }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<mapboxgl.Map | null>(null)
-  const [places, setPlaces] = useState<Place[]>([])
+  const [places, setPlaces] = useState<NormalizedPlace[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [showAddPlace, setShowAddPlace] = useState(false)
   const [clickedLngLat, setClickedLngLat] = useState<[number, number] | null>(null)
