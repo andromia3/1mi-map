@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
-import { hashPassword, verifyPassword, requireAuth } from "@/lib/auth"
+import { requireAuth } from "@/lib/auth"
+import bcrypt from "bcryptjs"
 
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1, "Current password is required"),
@@ -21,7 +22,7 @@ export async function POST(request: NextRequest) {
       where: { id: user.id },
     })
 
-    if (!dbUser || !(await verifyPassword(currentPassword, dbUser.passwordHash))) {
+    if (!dbUser || !(await bcrypt.compare(currentPassword, dbUser.passwordHash))) {
       return NextResponse.json(
         { error: "Current password is incorrect" },
         { status: 401 }
@@ -29,7 +30,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Update password
-    const newPasswordHash = await hashPassword(newPassword)
+    const newPasswordHash = await bcrypt.hash(newPassword, 12)
     await prisma.user.update({
       where: { id: user.id },
       data: { passwordHash: newPasswordHash },

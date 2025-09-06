@@ -22,7 +22,7 @@ const addPlaceSchema = z.object({
 type AddPlaceFormData = z.infer<typeof addPlaceSchema>
 
 interface MapViewProps {
-  user: NormalizedUser
+  user: { id: string; username: string; displayName?: string | null }
 }
 
 export default function MapView({ user }: MapViewProps) {

@@ -1,51 +1,37 @@
-import { NextRequest, NextResponse } from "next/server"
-import { z } from "zod"
-import { prisma } from "@/lib/prisma"
-import { verifyPassword } from "@/lib/auth"
-import { saveSession } from "@/lib/session"
+export const runtime = "nodejs";
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import bcrypt from "bcryptjs";
 
-const loginSchema = z.object({
-  username: z.string().min(1, "Username is required"),
-  password: z.string().min(1, "Password is required"),
-})
-
-export const runtime = "nodejs"
-
-export async function POST(request: NextRequest) {
+export async function POST(req: Request) {
   try {
-    const body = await request.json()
-    const { username, password } = loginSchema.parse(body)
+    const { username, password } = await req.json();
 
-    const user = await prisma.user.findUnique({
-      where: { username },
-    })
-
-    if (!user || !(await verifyPassword(password, user.passwordHash))) {
-      return NextResponse.json(
-        { error: "Invalid credentials" },
-        { status: 401 }
-      )
+    if (!username || !password) {
+      return NextResponse.json({ error: "INVALID_INPUT" }, { status: 400 });
     }
 
-    await saveSession({
-      userId: user.id,
-      username: user.username,
-      displayName: user.displayName || user.username,
-    })
-
-    return NextResponse.json({ success: true })
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: "Invalid input", details: error.errors },
-        { status: 400 }
-      )
+    const user = await prisma.user.findUnique({ where: { username } });
+    if (!user) {
+      return NextResponse.json({ error: "INVALID_CREDENTIALS" }, { status: 401 });
     }
 
-    console.error("Login error:", error)
-    return NextResponse.json(
-      { error: "LOGIN_FAIL" },
-      { status: 500 }
-    )
+    const ok = await bcrypt.compare(password, user.passwordHash);
+    if (!ok) {
+      return NextResponse.json({ error: "INVALID_CREDENTIALS" }, { status: 401 });
+    }
+
+    const res = NextResponse.json({ ok: true });
+    res.cookies.set("oneMi_session", JSON.stringify({ userId: user.id }), {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 7,
+    });
+    return res;
+  } catch (e) {
+    console.error("LOGIN_FAIL", e);
+    return NextResponse.json({ error: "LOGIN_FAIL" }, { status: 500 });
   }
 }
