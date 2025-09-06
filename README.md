@@ -55,7 +55,7 @@ npm install
 Create a `.env.local` file in the root directory:
 
 ```env
-DATABASE_URL="postgresql://postgres:password@aws-1-eu-west-2.pooler.supabase.com:6543/postgres?pgbouncer=true&sslmode=require"
+DATABASE_URL="postgresql://postgres.fleomqtjdvdkhojqkvax:<password>@aws-1-eu-west-2.pooler.supabase.com:6543/postgres?pgbouncer=true&sslmode=require"
 MAPBOX_TOKEN="pk.your_mapbox_token_here"
 NEXT_PUBLIC_MAPBOX_TOKEN="pk.your_mapbox_token_here"
 SESSION_PASSWORD="your-super-secret-session-password-at-least-32-characters-long"
@@ -83,6 +83,9 @@ npx prisma migrate deploy
 
 # 3. Seed the database with demo users
 npx prisma db seed
+
+# 4. Test database connection
+# Visit /api/dbtest - should return {"ok": true, "rows": [...]}
 ```
 
 **Alternative commands:**
@@ -152,6 +155,10 @@ The seed script creates these demo accounts:
 ### Places
 - `GET /api/places` - Get all places
 - `POST /api/places` - Create new place
+
+### Health & Diagnostics
+- `GET /api/health` - Basic database health check
+- `GET /api/dbtest` - Detailed database connection test
 
 ## Database Schema
 
