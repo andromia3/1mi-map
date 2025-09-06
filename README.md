@@ -61,10 +61,17 @@ NEXT_PUBLIC_MAPBOX_TOKEN="pk.your_mapbox_token_here"
 SESSION_PASSWORD="your-super-secret-session-password-at-least-32-characters-long"
 ```
 
+**Connection Types**:
+- **Runtime** (`.env.local`): Use Transaction Pooler (port 6543, user `postgres.<project_ref>`)
+- **Prisma CLI** (`.env`): Use Direct connection (port 5432, user `postgres`)
+
 **Important**: Prisma CLI uses `.env` (not `.env.local`). For local seeding on Windows:
 ```powershell
 Copy-Item .env.local .env
+# Then edit .env to use Direct connection (port 5432, user "postgres")
 ```
+
+See [SEEDING.md](./SEEDING.md) for detailed connection setup.
 
 **Important**: 
 - Get your Mapbox token from [mapbox.com](https://mapbox.com)
