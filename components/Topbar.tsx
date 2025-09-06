@@ -26,7 +26,7 @@ const changePasswordSchema = z.object({
 type ChangePasswordFormData = z.infer<typeof changePasswordSchema>
 
 interface TopbarProps {
-  displayName: string
+  displayName: string | null
 }
 
 export default function Topbar({ displayName }: TopbarProps) {

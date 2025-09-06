@@ -12,7 +12,7 @@ export default async function MapPage() {
 
   return (
     <>
-      <Topbar displayName={user.displayName ?? user.username} />
+      <Topbar displayName={user.displayName || user.username} />
       <MapView user={user} />
     </>
   )
