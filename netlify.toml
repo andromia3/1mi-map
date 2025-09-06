@@ -1,6 +1,5 @@
 [build]
-  command = "npm run build"
-  functions = "netlify/functions"
+  command = "npm ci && npx prisma generate && npm run build"
   publish = ".next"
 
 [build.environment]
