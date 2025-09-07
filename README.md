@@ -141,8 +141,8 @@ NEXT_PUBLIC_SUPABASE_URL="https://fleomqtjdvdkhojqkvax.supabase.co"
 NEXT_PUBLIC_SUPABASE_ANON_KEY="sb_publishable_oniQH7v49lsjml_DAXQEcw_0wQzqm41"
 
 # Mapbox Configuration
-MAPBOX_TOKEN="pk.eyJ1IjoiYW5kcm9taWEiLCJhIjoiY21mODE0c3l1MDI3czJpcXcxeW82NnA5OCJ9.d8EZjS0oIfHjnmX_aHJVSQ"
-NEXT_PUBLIC_MAPBOX_TOKEN="pk.eyJ1IjoiYW5kcm9taWEiLCJhIjoiY21mODE0c3l1MDI3czJpcXcxeW82NnA5OCJ9.d8EZjS0oIfHjnmX_aHJVSQ"
+MAPBOX_TOKEN="pk.eyJ1IjoiYW5kcm9taWEiLCJhIjoiY21mOXA0eWphMDlpODJscW9weWlvNXB0biJ9.lt-cpkt9IgVZwigPpimEBw"
+NEXT_PUBLIC_MAPBOX_TOKEN="pk.eyJ1IjoiYW5kcm9taWEiLCJhIjoiY21mOXA0eWphMDlpODJscW9weWlvNXB0biJ9.lt-cpkt9IgVZwigPpimEBw"
 ```
 
 **Important Notes:**
@@ -263,8 +263,8 @@ CREATE TABLE public.places (
    ```
    NEXT_PUBLIC_SUPABASE_URL=https://fleomqtjdvdkhojqkvax.supabase.co
    NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_oniQH7v49lsjml_DAXQEcw_0wQzqm41
-   MAPBOX_TOKEN=pk.eyJ1IjoiYW5kcm9taWEiLCJhIjoiY21mODE0c3l1MDI3czJpcXcxeW82NnA5OCJ9.d8EZjS0oIfHjnmX_aHJVSQ
-   NEXT_PUBLIC_MAPBOX_TOKEN=pk.eyJ1IjoiYW5kcm9taWEiLCJhIjoiY21mODE0c3l1MDI3czJpcXcxeW82NnA5OCJ9.d8EZjS0oIfHjnmX_aHJVSQ
+   MAPBOX_TOKEN=pk.eyJ1IjoiYW5kcm9taWEiLCJhIjoiY21mOXA0eWphMDlpODJscW9weWlvNXB0biJ9.lt-cpkt9IgVZwigPpimEBw
+   NEXT_PUBLIC_MAPBOX_TOKEN=pk.eyJ1IjoiYW5kcm9taWEiLCJhIjoiY21mOXA0eWphMDlpODJscW9weWlvNXB0biJ9.lt-cpkt9IgVZwigPpimEBw
    ```
 
 3. **Build Settings**

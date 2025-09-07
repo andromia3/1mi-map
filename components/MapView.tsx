@@ -13,6 +13,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { X } from "lucide-react";
 import { supabaseBrowser } from "@/lib/supabase/browser";
+import { DEFAULT_THEME, type MapStyleConfig } from "@/lib/mapTheme";
+import { configureVisualTheme } from "@/lib/configureVisualTheme";
 import type { Database } from "@/lib/supabase/types";
 
 const addPlaceSchema = z.object({
@@ -31,6 +33,7 @@ interface MapViewProps {
 export default function MapView({ user }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
+  const userMarker = useRef<mapboxgl.Marker | null>(null);
   const [places, setPlaces] = useState<Place[]>([]);
   const [nearbyPlaces, setNearbyPlaces] = useState<NearbyPlace[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -96,8 +99,8 @@ export default function MapView({ user }: MapViewProps) {
     try {
       const { clientWidth, clientHeight } = mapContainer.current;
       console.log("[map] container size before init", { clientWidth, clientHeight });
-      map.current = new mapboxgl.Map({
-        container: mapContainer.current,
+    map.current = new mapboxgl.Map({
+      container: mapContainer.current,
         style: styleUrl,
         center: userCenter,
         zoom: 12,
@@ -110,7 +113,27 @@ export default function MapView({ user }: MapViewProps) {
       map.current.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-left");
       map.current.addControl(new mapboxgl.ScaleControl({ unit: "metric" }), "bottom-left");
       map.current.addControl(new mapboxgl.AttributionControl({ compact: true }), "bottom-right");
-      map.current.addControl(new mapboxgl.GeolocateControl({ positionOptions: { enableHighAccuracy: true }, trackUserLocation: true, showUserHeading: true }), "top-left");
+
+      // Show a pin for the user's location and keep it updated
+      try {
+        userMarker.current?.remove();
+        userMarker.current = new mapboxgl.Marker({ color: "#2563eb" })
+          .setLngLat(userCenter as [number, number])
+          .addTo(map.current);
+      } catch {}
+
+      const geolocate = new mapboxgl.GeolocateControl({
+        positionOptions: { enableHighAccuracy: true },
+        trackUserLocation: true,
+        showUserHeading: true,
+      });
+      map.current.addControl(geolocate, "top-left");
+      geolocate.on("geolocate", (evt: any) => {
+        try {
+          const coords: [number, number] = [evt?.coords?.longitude, evt?.coords?.latitude];
+          if (coords[0] != null && coords[1] != null) userMarker.current?.setLngLat(coords);
+        } catch {}
+      });
     } catch (err) {
       console.error("[map] Failed to create Mapbox instance:", err);
       setError("Failed to create map. See console for details.");
@@ -127,10 +150,44 @@ export default function MapView({ user }: MapViewProps) {
       setIsLoading(false);
     }, 4000);
 
-    map.current.on("load", () => {
+    map.current.on("load", async () => {
       console.log("[map] event:load fired, styleLoaded=", map.current?.isStyleLoaded?.());
       setIsLoading(false);
       map.current?.resize();
+      // Theme caching: apply cached theme immediately, then refresh from Supabase
+      const applyTheme = (cfg: MapStyleConfig) => {
+        try { configureVisualTheme(map.current!, cfg); } catch (e) { console.warn("[map] theme apply failed", e); }
+      };
+      let appliedFromCache = false;
+      try {
+        const cached = typeof window !== "undefined" ? localStorage.getItem("mapTheme:current") : null;
+        if (cached) {
+          const cfg = JSON.parse(cached) as MapStyleConfig;
+          applyTheme(cfg);
+          appliedFromCache = true;
+        }
+      } catch (e) {
+        console.warn("[map] theme cache parse error", e);
+      }
+      try {
+        const supabase = supabaseBrowser();
+        const { data, error } = await supabase
+          .from("map_style_current")
+          .select("config")
+          .single();
+        const fresh = (data?.config as MapStyleConfig) || DEFAULT_THEME;
+        const newStr = JSON.stringify(fresh);
+        const oldStr = typeof window !== "undefined" ? localStorage.getItem("mapTheme:current") : null;
+        if (oldStr !== newStr) {
+          applyTheme(fresh);
+          try { localStorage.setItem("mapTheme:current", newStr); } catch {}
+        } else if (!appliedFromCache) {
+          applyTheme(fresh);
+        }
+      } catch (e) {
+        console.warn("[map] theme fetch failed, using default", e);
+        if (!appliedFromCache) applyTheme(DEFAULT_THEME);
+      }
       window.clearTimeout(timeoutId);
       window.clearTimeout(quickId);
     });
@@ -141,10 +198,11 @@ export default function MapView({ user }: MapViewProps) {
       window.clearTimeout(timeoutId);
       window.clearTimeout(quickId);
     });
-    map.current.on("click", (e) => {
-      setClickedLngLat([e.lngLat.lng, e.lngLat.lat]);
-      setShowAddPlace(true);
-    });
+    // Disable new-place form for now (requested)
+    // map.current.on("click", (e) => {
+    //   setClickedLngLat([e.lngLat.lng, e.lngLat.lat]);
+    //   setShowAddPlace(true);
+    // });
 
     return () => {
       if (map.current) {
@@ -281,54 +339,159 @@ export default function MapView({ user }: MapViewProps) {
     }
   };
 
-  // Add markers to map
+  // GeoJSON for places
+  const placesGeoJson = useMemo(() => ({
+    type: "FeatureCollection" as const,
+    features: (places || []).map((p) => ({
+      type: "Feature" as const,
+      geometry: { type: "Point" as const, coordinates: [p.lng, p.lat] as [number, number] },
+      properties: {
+        title: p.title,
+        description: p.description || "",
+        addedBy: user.user_metadata?.display_name || user.email || "",
+      },
+    })),
+  }), [places, user])
+
+  // Clustered places layer
   useEffect(() => {
-    if (!map.current || places.length === 0) return
+    if (!map.current) return;
+    const m = map.current;
+    const sourceId = "places-src";
+    const clusterLayer = "places-clusters";
+    const clusterCount = "places-cluster-count";
+    const unclustered = "places-unclustered";
 
-    // Clear existing markers
-    const existingMarkers = document.querySelectorAll(".map-marker")
-    existingMarkers.forEach(marker => marker.remove())
+    const ensureLayers = () => {
+      if (!m.getSource(sourceId)) {
+        m.addSource(sourceId, {
+          type: "geojson",
+          data: placesGeoJson as any,
+          cluster: true,
+          clusterRadius: 60,
+          clusterMaxZoom: 14,
+        } as any);
 
-    places.forEach(() => {})
-  }, [places, user])
+        m.addLayer({
+          id: clusterLayer,
+          type: "circle",
+          source: sourceId,
+          filter: ["has", "point_count"],
+          paint: {
+            "circle-color": [
+              "step",
+              ["get", "point_count"],
+              "#93c5fd",
+              10, "#60a5fa",
+              25, "#3b82f6",
+              50, "#2563eb",
+            ],
+            "circle-radius": ["step", ["get", "point_count"], 16, 25, 22, 50, 28],
+            "circle-stroke-width": 2,
+            "circle-stroke-color": "#ffffff",
+          },
+        } as any);
 
-  // Add nearby places markers (different color)
+        m.addLayer({
+          id: clusterCount,
+          type: "symbol",
+          source: sourceId,
+          filter: ["has", "point_count"],
+          layout: {
+            "text-field": ["get", "point_count_abbreviated"],
+            "text-size": 12,
+          },
+          paint: { "text-color": "#0f172a" },
+        } as any);
+
+        m.addLayer({
+          id: unclustered,
+          type: "circle",
+          source: sourceId,
+          filter: ["!has", "point_count"],
+          paint: {
+            "circle-radius": 6,
+            "circle-color": "#22c55e",
+            "circle-stroke-width": 2,
+            "circle-stroke-color": "#ffffff",
+          },
+        } as any);
+
+        m.on("click", clusterLayer, (e: any) => {
+          const features = m.queryRenderedFeatures(e.point, { layers: [clusterLayer] }) || [];
+          const feature = features[0];
+          if (!feature) return;
+          const clusterId = feature.properties?.cluster_id;
+          if (clusterId == null) return;
+          (m.getSource(sourceId) as any).getClusterExpansionZoom(clusterId, (err: any, zoom: number) => {
+            if (err) return;
+            const coords = (feature.geometry as any).coordinates as [number, number];
+            m.easeTo({ center: coords, zoom, duration: 600 });
+          });
+        });
+
+        m.on("click", unclustered, (e: any) => {
+          const f = e.features?.[0];
+          if (!f) return;
+          const coords = f.geometry.coordinates as [number, number];
+          const { title, description, addedBy } = f.properties || {};
+          new mapboxgl.Popup({ offset: 25 })
+            .setLngLat(coords)
+            .setHTML(`<div class="p-2"><h3 class="font-semibold text-sm">${title || "Untitled"}</h3>${description ? `<p class=\"text-xs text-gray-600 mt-1\">${description}</p>` : ""}<p class="text-xs text-gray-500 mt-2">Added by ${addedBy || "unknown"}</p></div>`)
+            .addTo(m);
+        });
+      } else {
+        (m.getSource(sourceId) as any).setData(placesGeoJson as any);
+      }
+    };
+
+    if (m.isStyleLoaded()) ensureLayers();
+    else m.once("load", ensureLayers);
+  }, [placesGeoJson, styleUrl]);
+
+  // Nearby layer (non-clustered)
+  const nearbyGeoJson = useMemo(() => ({
+    type: "FeatureCollection" as const,
+    features: (nearbyPlaces || []).map((p) => ({
+      type: "Feature" as const,
+      geometry: { type: "Point" as const, coordinates: [p.lng, p.lat] as [number, number] },
+      properties: {
+        title: p.title,
+        description: p.description || "",
+        distance_m: Math.round(p.distance_m || 0),
+        addedBy: user.user_metadata?.display_name || user.email || "",
+      },
+    })),
+  }), [nearbyPlaces, user]);
+
   useEffect(() => {
-    if (!map.current || nearbyPlaces.length === 0) return
+    if (!map.current) return;
+    const m = map.current;
+    const sourceId = "nearby-src";
+    const layerId = "nearby-circles";
 
-    // Clear existing nearby markers
-    const existingNearbyMarkers = document.querySelectorAll(".nearby-marker")
-    existingNearbyMarkers.forEach(marker => marker.remove())
+    const ensureLayers = () => {
+      if (!m.getSource(sourceId)) {
+        m.addSource(sourceId, { type: "geojson", data: nearbyGeoJson as any } as any);
+        m.addLayer({
+          id: layerId,
+          type: "circle",
+          source: sourceId,
+          paint: {
+            "circle-radius": 5,
+            "circle-color": "#10b981",
+            "circle-stroke-width": 2,
+            "circle-stroke-color": "#ffffff",
+          },
+        } as any);
+      } else {
+        (m.getSource(sourceId) as any).setData(nearbyGeoJson as any);
+      }
+    };
 
-    nearbyPlaces.forEach(place => {
-      const markerEl = document.createElement("div")
-      markerEl.className = "nearby-marker"
-      markerEl.style.cssText = `
-        width: 20px;
-        height: 20px;
-        border-radius: 50%;
-        background: #10b981;
-        border: 2px solid white;
-        cursor: pointer;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-      `
-
-      const popup = new mapboxgl.Popup({ offset: 25 })
-        .setHTML(`
-          <div class="p-2">
-            <h3 class="font-semibold text-sm">${place.title}</h3>
-            ${place.description ? `<p class="text-xs text-gray-600 mt-1">${place.description}</p>` : ''}
-            <p class="text-xs text-gray-500 mt-1">${Math.round(place.distance_m)}m away</p>
-            <p class="text-xs text-gray-500">Added by ${user.user_metadata?.display_name || user.email}</p>
-          </div>
-        `)
-
-      new mapboxgl.Marker(markerEl)
-        .setLngLat([place.lng, place.lat])
-        .setPopup(popup)
-        .addTo(map.current!)
-    })
-  }, [nearbyPlaces, user])
+    if (m.isStyleLoaded()) ensureLayers();
+    else m.once("load", ensureLayers);
+  }, [nearbyGeoJson, styleUrl]);
 
   const onSubmitPlace = async (data: AddPlaceFormData) => {
     if (!clickedLngLat) return;
@@ -423,79 +586,7 @@ export default function MapView({ user }: MapViewProps) {
         </Button>
       </div>
       
-      {showAddPlace && clickedLngLat && (
-        <div className="fixed inset-0 bg-black/20 flex items-center justify-center p-4 z-40">
-          <Card className="w-full max-w-md">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>Add Nice Place</CardTitle>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={handleCloseAddPlace}
-                  className="h-8 w-8"
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-              <CardDescription>
-                Add a place at {clickedLngLat[1].toFixed(4)}, {clickedLngLat[0].toFixed(4)}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleSubmit(onSubmitPlace)} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="title">Title</Label>
-                  <Input
-                    id="title"
-                    placeholder="Enter place title"
-                    {...register("title")}
-                    disabled={isSubmitting}
-                  />
-                  {errors.title && (
-                    <p className="text-sm text-red-600">{errors.title.message}</p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="description">Description (optional)</Label>
-                  <Textarea
-                    id="description"
-                    placeholder="Enter place description"
-                    {...register("description")}
-                    disabled={isSubmitting}
-                    rows={3}
-                  />
-                  {errors.description && (
-                    <p className="text-sm text-red-600">{errors.description.message}</p>
-                  )}
-                </div>
-
-                {error && (
-                  <div className="text-sm text-red-600 bg-red-50 p-3 rounded-md">
-                    {error}
-                  </div>
-                )}
-
-                <div className="flex space-x-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={handleCloseAddPlace}
-                    disabled={isSubmitting}
-                    className="flex-1"
-                  >
-                    Cancel
-                  </Button>
-                  <Button type="submit" disabled={isSubmitting} className="flex-1">
-                    {isSubmitting ? "Adding..." : "Add Place"}
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+      {/* Add-place modal intentionally removed per request */}
     </div>
   )
 }
