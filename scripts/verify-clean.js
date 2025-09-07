@@ -6,20 +6,20 @@ const path = require('path');
 
 console.log('🔍 Verifying clean Supabase-only deployment...\n');
 
-// Check for any remaining API routes
+// Check for any remaining API routes (excluding login page which is allowed)
 const appDir = path.join(__dirname, '..', 'app');
 if (fs.existsSync(appDir)) {
   const files = fs.readdirSync(appDir, { recursive: true });
-  const apiFiles = files.filter(file => 
+  const forbiddenApiFiles = files.filter(file => 
     typeof file === 'string' && 
-    (file.includes('api') || file.includes('login') || file.includes('logout'))
+    (file.includes('api/') || file.includes('login/route') || file.includes('logout/route') || file.includes('change-password/route'))
   );
   
-  if (apiFiles.length > 0) {
-    console.error('❌ Found remaining API files:', apiFiles);
+  if (forbiddenApiFiles.length > 0) {
+    console.error('❌ Found forbidden API files:', forbiddenApiFiles);
     process.exit(1);
   } else {
-    console.log('✅ No API routes found');
+    console.log('✅ No forbidden API routes found');
   }
 }
 
