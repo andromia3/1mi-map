@@ -13,6 +13,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { X } from "lucide-react";
 import { supabaseBrowser } from "@/lib/supabase/browser";
+import type { Database } from "@/lib/supabase/types";
 
 const addPlaceSchema = z.object({
   title: z.string().min(1, "Title is required"),
@@ -20,16 +21,7 @@ const addPlaceSchema = z.object({
 });
 
 type AddPlaceFormData = z.infer<typeof addPlaceSchema>;
-
-interface Place {
-  id: string;
-  title: string;
-  description?: string;
-  lat: number;
-  lng: number;
-  created_by: string;
-  created_at: string;
-}
+type Place = Database["public"]["Tables"]["places"]["Row"];
 
 interface MapViewProps {
   user: { id: string; email: string; user_metadata?: { display_name?: string } };
@@ -84,7 +76,7 @@ export default function MapView({ user }: MapViewProps) {
     }
   }, [])
 
-  // Load places
+  // Load places and set up realtime subscription
   useEffect(() => {
     const loadPlaces = async () => {
       try {
@@ -105,6 +97,25 @@ export default function MapView({ user }: MapViewProps) {
     };
 
     loadPlaces();
+
+    // Set up realtime subscription for places
+    const supabase = supabaseBrowser();
+    const channel = supabase
+      .channel("public:places")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "places" },
+        (payload) => {
+          console.log("Places updated:", payload);
+          // Reload places when any change occurs
+          loadPlaces();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   // Add markers to map

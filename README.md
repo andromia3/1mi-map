@@ -1,27 +1,35 @@
 # 1MI Members' Club
 
-A beautiful, premium Next.js 14 application for the 1MI Members' Club featuring an interactive Mapbox map where members can share and discover nice places around London.
+A premium Next.js 14 application for the 1MI Members' Club featuring an interactive Mapbox-powered map where members can discover and share nice places in London.
 
-## Features
+## 🌟 Features
 
-- **Modern Authentication**: Secure email/password login with Supabase Auth
-- **Interactive Map**: Full-screen Mapbox map centered on London
-- **Place Sharing**: Members can add pins with titles and descriptions
-- **Premium UI**: Clean, minimalist design inspired by Notion/Linear
-- **Real-time Updates**: Places are shared across all members
-- **Responsive Design**: Works perfectly on desktop and mobile
+- **🔐 Secure Authentication** - Email/password login with Supabase Auth
+- **🗺️ Interactive Map** - Beautiful Mapbox map centered on London
+- **📍 Place Sharing** - Members can add and discover nice places
+- **🎨 Premium UI** - Clean, modern design with shadcn/ui components
+- **🔒 Password Management** - Users can change their passwords
+- **📱 Responsive Design** - Works perfectly on all devices
+- **⚡ Real-time Ready** - Built for real-time updates with Supabase
+- **🛡️ Row Level Security** - Secure data access with RLS policies
 
-## Tech Stack
+## 🛠️ Tech Stack
 
-- **Frontend**: Next.js 14 (App Router), TypeScript, Tailwind CSS
-- **UI Components**: shadcn/ui for premium look and feel
-- **Maps**: Mapbox GL JS with custom styling
+- **Framework**: Next.js 14 (App Router, TypeScript)
+- **Styling**: Tailwind CSS + shadcn/ui
+- **Maps**: Mapbox GL JS
 - **Database**: Supabase (PostgreSQL) with Row Level Security
 - **Authentication**: Supabase Auth with JWT tokens
+- **Validation**: Zod + React Hook Form
 - **Deployment**: Netlify with serverless functions
-- **Styling**: Tailwind CSS with custom components
 
-## Quick Start
+## 📋 Prerequisites
+
+- Node.js 18+
+- Supabase account ([supabase.com](https://supabase.com))
+- Mapbox account and API token ([mapbox.com](https://mapbox.com))
+
+## 🚀 Quick Start
 
 ### 1. Clone and Install
 
@@ -31,11 +39,15 @@ cd 1mi-members-club
 npm install
 ```
 
-### 2. Supabase Setup
+### 2. Supabase Project Setup
 
-1. Create a new project on [Supabase](https://supabase.com)
-2. Go to Settings → API to get your project URL and anon key
-3. Create the `places` table in the SQL editor:
+1. **Create a new project** on [Supabase](https://supabase.com)
+2. **Get your credentials** from Settings → API:
+   - Project URL
+   - Anon (public) key
+3. **Create the places table** in the Supabase SQL Editor:
+
+   Go to your Supabase project dashboard → SQL Editor and run this SQL:
 
 ```sql
 -- Create places table
@@ -52,7 +64,7 @@ CREATE TABLE public.places (
 -- Enable Row Level Security
 ALTER TABLE public.places ENABLE ROW LEVEL SECURITY;
 
--- Create policies
+-- Create policies for secure data access
 CREATE POLICY "Users can view all places" ON public.places
   FOR SELECT USING (true);
 
@@ -66,106 +78,288 @@ CREATE POLICY "Users can delete their own places" ON public.places
   FOR DELETE USING (auth.uid() = created_by);
 ```
 
-### 3. Environment Variables
+**Note**: This replaces the old Prisma migrations. Simply run this SQL once in your Supabase project.
+
+### 3. Mapbox Setup
+
+1. **Create a Mapbox account** at [mapbox.com](https://mapbox.com)
+2. **Generate an API token** from your account dashboard
+3. **Copy the token** for use in environment variables
+
+### 4. Environment Variables
 
 Create a `.env.local` file in the root directory:
 
 ```env
-NEXT_PUBLIC_SUPABASE_URL="https://your-project.supabase.co"
-NEXT_PUBLIC_SUPABASE_ANON_KEY="your-anon-key"
-MAPBOX_TOKEN="pk.your_mapbox_token_here"
-NEXT_PUBLIC_MAPBOX_TOKEN="pk.your_mapbox_token_here"
+# Supabase Configuration
+NEXT_PUBLIC_SUPABASE_URL="https://fleomqtjdvdkhojqkvax.supabase.co"
+NEXT_PUBLIC_SUPABASE_ANON_KEY="sb_publishable_oniQH7v49lsjml_DAXQEcw_0wQzqm41"
+
+# Mapbox Configuration
+MAPBOX_TOKEN="pk.eyJ1IjoiYW5kcm9taWEiLCJhIjoiY21mODE0c3l1MDI3czJpcXcxeW82NnA5OCJ9.d8EZjS0oIfHjnmX_aHJVSQ"
+NEXT_PUBLIC_MAPBOX_TOKEN="pk.eyJ1IjoiYW5kcm9taWEiLCJhIjoiY21mODE0c3l1MDI3czJpcXcxeW82NnA5OCJ9.d8EZjS0oIfHjnmX_aHJVSQ"
 ```
 
-**Important**: 
-- Get your Supabase URL and anon key from your project settings
-- Get your Mapbox token from [mapbox.com](https://mapbox.com)
-- Use the same token for both `MAPBOX_TOKEN` and `NEXT_PUBLIC_MAPBOX_TOKEN`
+**Important Notes:**
+- Use the same Mapbox token for both `MAPBOX_TOKEN` and `NEXT_PUBLIC_MAPBOX_TOKEN`
+- The `NEXT_PUBLIC_` prefix makes variables available in the browser
+- Never commit `.env.local` to version control
 
-### 4. Run Development Server
+### 5. Run Development Server
 
 ```bash
 npm run dev
 ```
 
-Visit [http://localhost:3000](http://localhost:3000) and sign up for a new account or sign in.
+Visit [http://localhost:3000](http://localhost:3000) and:
+1. **Sign up** for a new account with your email
+2. **Sign in** with your credentials
+3. **Explore the map** and add your first place!
 
-## Project Structure
+## 📁 Project Structure
 
 ```
 ├── app/                    # Next.js 14 App Router
 │   ├── login/             # Login page
+│   │   └── page.tsx       # Login page component
 │   ├── map/               # Map page (protected)
-│   └── layout.tsx         # Root layout
+│   │   └── page.tsx       # Map page component
+│   ├── layout.tsx         # Root layout
+│   └── page.tsx           # Home page (redirects to login)
 ├── components/            # React components
 │   ├── ui/               # shadcn/ui components
-│   ├── LoginForm.tsx     # Login form
+│   │   ├── button.tsx    # Button component
+│   │   ├── card.tsx      # Card component
+│   │   ├── dialog.tsx    # Dialog component
+│   │   ├── input.tsx     # Input component
+│   │   ├── label.tsx     # Label component
+│   │   └── textarea.tsx  # Textarea component
+│   ├── LoginForm.tsx     # Login form component
 │   ├── MapView.tsx       # Mapbox map component
-│   └── Topbar.tsx        # Navigation bar
-├── lib/                  # Utilities
+│   └── Topbar.tsx        # Navigation bar component
+├── lib/                  # Utilities and helpers
 │   ├── supabase/         # Supabase client helpers
+│   │   ├── browser.ts    # Browser client
+│   │   └── server.ts     # Server client
 │   └── utils.ts          # Utility functions
-├── middleware.ts         # Route protection
-└── public/               # Static assets
+├── middleware.ts         # Route protection middleware
+├── netlify.toml          # Netlify deployment configuration
+├── next.config.js        # Next.js configuration
+├── package.json          # Dependencies and scripts
+├── tailwind.config.js    # Tailwind CSS configuration
+└── tsconfig.json         # TypeScript configuration
 ```
 
-## Authentication
+## 🔐 Authentication System
 
-The app uses Supabase Auth for secure authentication:
+The application uses Supabase Auth for secure authentication:
 
-- **Sign Up**: Users can create accounts with email/password
-- **Sign In**: Existing users can sign in with their credentials
-- **Protected Routes**: `/map` is protected by middleware
-- **Session Management**: JWT tokens handled automatically by Supabase
+### Features
+- **Email/Password Authentication** - Secure login with email and password
+- **JWT Tokens** - Automatic session management with JWT tokens
+- **Protected Routes** - Middleware protects `/map` route
+- **Session Persistence** - Sessions persist across browser refreshes
+- **Password Management** - Users can change their passwords
 
-## Database Schema
+### Authentication Flow
+1. **Sign Up** - Users create accounts with email/password
+2. **Sign In** - Existing users authenticate with credentials
+3. **Session Management** - JWT tokens handled automatically
+4. **Route Protection** - Middleware redirects unauthenticated users
+5. **Logout** - Secure session termination
+
+## 🗄️ Database Schema
 
 ### Places Table
-- `id` - UUID primary key
-- `title` - Place title (required)
-- `description` - Optional description
-- `lat` - Latitude coordinate
-- `lng` - Longitude coordinate
-- `created_by` - User ID who added the place
-- `created_at` - Creation timestamp
+```sql
+CREATE TABLE public.places (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  title TEXT NOT NULL,
+  description TEXT,
+  lat DOUBLE PRECISION NOT NULL,
+  lng DOUBLE PRECISION NOT NULL,
+  created_by UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+```
 
 ### Row Level Security (RLS)
-- Users can view all places
-- Users can only create, update, and delete their own places
-- All operations require authentication
+- **View All Places** - Users can see all places added by any member
+- **Create Own Places** - Users can only add places to their own account
+- **Update Own Places** - Users can only modify their own places
+- **Delete Own Places** - Users can only remove their own places
+- **Authentication Required** - All operations require valid authentication
 
-## Deployment
+## 🗺️ Map Features
 
-### Netlify
+### Interactive Map
+- **Mapbox Integration** - Powered by Mapbox GL JS
+- **London Centered** - Default view centered on London
+- **Custom Styling** - Light theme with premium appearance
+- **Responsive Design** - Works on all screen sizes
 
-1. **Connect Repository**: Link your GitHub repo to Netlify
-2. **Environment Variables**: Set the following in Netlify dashboard:
-   - `NEXT_PUBLIC_SUPABASE_URL` - Your Supabase project URL
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Your Supabase anon key
-   - `MAPBOX_TOKEN` - Your Mapbox API token
-   - `NEXT_PUBLIC_MAPBOX_TOKEN` - Same as above
+### Place Management
+- **Click to Add** - Click anywhere on the map to add a place
+- **Rich Information** - Add title and description for each place
+- **Visual Markers** - Green circular markers for all places
+- **Popup Details** - Click markers to see place information
+- **User Attribution** - Shows who added each place
 
-3. **Build Settings**: Netlify will auto-detect Next.js and use the included `netlify.toml`
+## 🚀 Deployment
 
-## Development
+### Netlify Deployment
+
+1. **Connect Repository**
+   - Link your GitHub repository to Netlify
+   - Netlify will auto-detect Next.js configuration
+
+2. **Environment Variables**
+   Set the following in your Netlify dashboard:
+   ```
+   NEXT_PUBLIC_SUPABASE_URL=https://fleomqtjdvdkhojqkvax.supabase.co
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_oniQH7v49lsjml_DAXQEcw_0wQzqm41
+   MAPBOX_TOKEN=pk.eyJ1IjoiYW5kcm9taWEiLCJhIjoiY21mODE0c3l1MDI3czJpcXcxeW82NnA5OCJ9.d8EZjS0oIfHjnmX_aHJVSQ
+   NEXT_PUBLIC_MAPBOX_TOKEN=pk.eyJ1IjoiYW5kcm9taWEiLCJhIjoiY21mODE0c3l1MDI3czJpcXcxeW82NnA5OCJ9.d8EZjS0oIfHjnmX_aHJVSQ
+   ```
+
+3. **Build Settings**
+   - Build command: `npm run build`
+   - Publish directory: `.next`
+   - Node version: 18.x
+
+4. **Deploy**
+   - Netlify will automatically deploy on every push to main
+   - Preview deployments for pull requests
+
+### Environment Variables for Production
+
+Make sure to set these in your deployment platform:
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `NEXT_PUBLIC_SUPABASE_URL` | Your Supabase project URL | ✅ |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Your Supabase anon key | ✅ |
+| `MAPBOX_TOKEN` | Your Mapbox API token | ✅ |
+| `NEXT_PUBLIC_MAPBOX_TOKEN` | Same as MAPBOX_TOKEN | ✅ |
+
+## 🛠️ Development
 
 ### Available Scripts
 
 ```bash
-npm run dev          # Start development server
+npm run dev          # Start development server (http://localhost:3000)
 npm run build        # Build for production
 npm run start        # Start production server
-npm run lint         # Run ESLint
+npm run lint         # Run ESLint for code quality
 ```
 
-## Contributing
+### Development Workflow
 
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/amazing-feature`
-3. Commit your changes: `git commit -m 'Add amazing feature'`
-4. Push to the branch: `git push origin feature/amazing-feature`
-5. Open a Pull Request
+1. **Start Development Server**
+   ```bash
+   npm run dev
+   ```
 
-## License
+2. **Make Changes**
+   - Edit components in `components/`
+   - Modify pages in `app/`
+   - Update styles in `tailwind.config.js`
+
+3. **Test Changes**
+   - Visit `http://localhost:3000`
+   - Test authentication flow
+   - Verify map functionality
+
+4. **Code Quality**
+   ```bash
+   npm run lint
+   ```
+
+### Key Development Files
+
+- **`components/LoginForm.tsx`** - Authentication form
+- **`components/MapView.tsx`** - Main map component
+- **`components/Topbar.tsx`** - Navigation and user actions
+- **`middleware.ts`** - Route protection
+- **`lib/supabase/`** - Supabase client configuration
+
+## 🔧 Configuration
+
+### Supabase Configuration
+- **Project URL** - Your Supabase project URL
+- **Anon Key** - Public key for client-side operations
+- **Row Level Security** - Enabled for data protection
+
+### Mapbox Configuration
+- **Access Token** - Your Mapbox API token
+- **Map Style** - Light theme for premium appearance
+- **Default Location** - London coordinates (-0.1276, 51.5072)
+
+### Next.js Configuration
+- **App Router** - Using Next.js 14 App Router
+- **TypeScript** - Full TypeScript support
+- **Middleware** - Route protection with middleware
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+1. **Authentication Not Working**
+   - Check Supabase URL and anon key
+   - Verify environment variables are set
+   - Ensure Supabase project is active
+
+2. **Map Not Loading**
+   - Verify Mapbox token is valid
+   - Check browser console for errors
+   - Ensure token has correct permissions
+
+3. **Database Errors**
+   - Verify RLS policies are set up correctly
+   - Check Supabase project status
+   - Ensure user is authenticated
+
+4. **Build Failures**
+   - Run `npm install` to ensure dependencies
+   - Check TypeScript errors with `npm run lint`
+   - Verify all environment variables are set
+
+### Getting Help
+
+1. **Check the logs** in your browser's developer console
+2. **Verify environment variables** are correctly set
+3. **Test Supabase connection** in the Supabase dashboard
+4. **Check Mapbox token** in the Mapbox dashboard
+
+## 🤝 Contributing
+
+1. **Fork the repository**
+2. **Create a feature branch**: `git checkout -b feature/amazing-feature`
+3. **Make your changes** and test thoroughly
+4. **Commit your changes**: `git commit -m 'Add amazing feature'`
+5. **Push to the branch**: `git push origin feature/amazing-feature`
+6. **Open a Pull Request** with a clear description
+
+### Development Guidelines
+
+- **Follow TypeScript** best practices
+- **Use Tailwind CSS** for styling
+- **Test authentication flow** thoroughly
+- **Verify map functionality** on different devices
+- **Update documentation** for new features
+
+## 📄 License
 
 This project is private and proprietary to the 1MI Members' Club.
+
+## 🙏 Acknowledgments
+
+- **Supabase** for authentication and database services
+- **Mapbox** for mapping services
+- **Next.js** for the React framework
+- **Tailwind CSS** for styling
+- **shadcn/ui** for UI components
+
+---
+
+**Built with ❤️ for the 1MI Members' Club**
