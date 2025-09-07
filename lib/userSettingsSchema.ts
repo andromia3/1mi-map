@@ -20,6 +20,23 @@ export const userSettingsSchema = z.object({
     buildings_3d: z.boolean().default(true),
     label_density: z.number().min(0.5).max(2).default(1.0),
     road_contrast: z.number().min(0.5).max(2).default(1.0),
+    interaction: z.object({
+      dragRotate: z.boolean().default(false),
+      touchZoomRotate: z.boolean().default(true),
+      scrollZoom: z.boolean().default(true),
+      keyboard: z.boolean().default(true),
+      dragPan: z.boolean().default(true),
+      inertia: z.boolean().default(true),
+      wheelZoomRate: z.number().min(0.5).max(2).default(1.0),
+    }).default({
+      dragRotate: false,
+      touchZoomRotate: true,
+      scrollZoom: true,
+      keyboard: true,
+      dragPan: true,
+      inertia: true,
+      wheelZoomRate: 1.0,
+    }),
   }),
 });
 

@@ -5,7 +5,8 @@ import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { Button } from "@/components/ui/button";
 import { supabaseBrowser } from "@/lib/supabase/browser";
-import { DEFAULT_THEME, type MapStyleConfig, type StyleKey } from "@/lib/mapTheme";
+import { DEFAULT_THEME, type MapStyleConfig, type StyleKey, mapStyleConfigSchema } from "@/lib/mapTheme";
+import { safeFetch } from "@/lib/safeFetch";
 import { configureVisualTheme } from "@/lib/configureVisualTheme";
 import type { Database } from "@/lib/supabase/types";
 
@@ -27,21 +28,36 @@ export default function MapView({ user }: MapViewProps) {
   const [isLoadingNearby, setIsLoadingNearby] = useState(false);
   const [error, setError] = useState("");
   const [userCenter, setUserCenter] = useState<[number, number] | null>(null);
+  const [themeInfo, setThemeInfo] = useState<{ water: string[]; parks: string[]; roads: string[]; labels: string[]; transit: string[]; buildings: string[]; skipped?: string[] }>({ water: [], parks: [], roads: [], labels: [], transit: [], buildings: [] });
   const styles = [
     { id: "default", label: "Standard", url: "mapbox://styles/mapbox/standard" },
     { id: "night", label: "Night", url: "mapbox://styles/mapbox/standard" },
     { id: "satellite", label: "Satellite", url: "mapbox://styles/mapbox/satellite-streets-v12" },
   ];
   const styleUrlFor = (key: StyleKey) => (key === "satellite" ? "mapbox://styles/mapbox/satellite-streets-v12" : "mapbox://styles/mapbox/standard");
-  const [styleKey, setStyleKey] = useState<StyleKey>("default");
-  const [styleUrl, setStyleUrl] = useState<string>(styleUrlFor("default"));
+  const initialStyleKey = (typeof window !== "undefined" ? (localStorage.getItem("map:style_key") as StyleKey | null) : null) || "default";
+  const [styleKey, setStyleKey] = useState<StyleKey>(initialStyleKey);
+  const [styleUrl, setStyleUrl] = useState<string>(styleUrlFor(initialStyleKey));
+  const saveTimer = useRef<number | null>(null);
+  const lastSupabaseWriteAt = useRef<number>(0);
 
   // Forms, validation, and modal for adding new places have been removed
 
-  // Get user location first
+  // Get user location or last_view first
   useEffect(() => {
     const fallback: [number, number] = [-0.1276, 51.5072];
     if (typeof window === "undefined" || userCenter !== null) return;
+    // Prefer cached last_view for instant UX
+    try {
+      const last = localStorage.getItem("map:last_view");
+      if (last) {
+        const parsed = JSON.parse(last) as { center: [number, number] };
+        if (parsed?.center?.length === 2) {
+          setUserCenter(parsed.center);
+          return;
+        }
+      }
+    } catch {}
     if (!navigator.geolocation) {
       setUserCenter(fallback);
       return;
@@ -58,7 +74,7 @@ export default function MapView({ user }: MapViewProps) {
       },
       { enableHighAccuracy: true, timeout: 5000, maximumAge: 600000 }
     );
-  }, [userCenter, styleUrl]);
+  }, [userCenter]);
 
   // Initialize map when we know the center
   useEffect(() => {
@@ -77,12 +93,27 @@ export default function MapView({ user }: MapViewProps) {
     try {
       const { clientWidth, clientHeight } = mapContainer.current;
       console.log("[map] container size before init", { clientWidth, clientHeight });
+      let initZoom = 12;
+      let initPitch = 0;
+      let initBearing = 0;
+      try {
+        const last = localStorage.getItem("map:last_view");
+        if (last) {
+          const parsed = JSON.parse(last) as { zoom?: number; pitch?: number; bearing?: number };
+          if (typeof parsed.zoom === "number") initZoom = parsed.zoom;
+          if (typeof parsed.pitch === "number") initPitch = parsed.pitch;
+          if (typeof parsed.bearing === "number") initBearing = parsed.bearing;
+        }
+      } catch {}
     map.current = new mapboxgl.Map({
       container: mapContainer.current,
         style: styleUrl,
         center: userCenter,
-        zoom: 12,
-        antialias: false,
+        zoom: initZoom,
+        pitch: initPitch,
+        bearing: initBearing,
+        antialias: true,
+        preserveDrawingBuffer: true as any,
         dragRotate: false,
         pitchWithRotate: false,
         attributionControl: false,
@@ -91,6 +122,15 @@ export default function MapView({ user }: MapViewProps) {
       map.current.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-left");
       map.current.addControl(new mapboxgl.ScaleControl({ unit: "metric" }), "bottom-left");
       map.current.addControl(new mapboxgl.AttributionControl({ compact: true }), "bottom-right");
+
+      // Observe container size and resize map to avoid blurriness/clipping
+      try {
+        const ro = new ResizeObserver(() => {
+          try { map.current?.resize(); } catch {}
+        });
+        ro.observe(mapContainer.current!);
+        (map.current as any)._resizeObserver = ro;
+      } catch {}
 
       // Show a pin for the user's location and keep it updated
       try {
@@ -134,7 +174,7 @@ export default function MapView({ user }: MapViewProps) {
       map.current?.resize();
       // Theme caching: apply cached theme immediately, then refresh from Supabase
       const applyTheme = (cfg: MapStyleConfig) => {
-        try { configureVisualTheme(map.current!, cfg, { styleKey }); } catch (e) { console.warn("[map] theme apply failed", e); }
+        try { configureVisualTheme(map.current!, cfg, { styleKey, isSatellite: styleKey === "satellite", staged: true }); } catch (e) { console.warn("[map] theme apply failed", e); }
       };
       let appliedFromCache = false;
       try {
@@ -148,12 +188,23 @@ export default function MapView({ user }: MapViewProps) {
         console.warn("[map] theme cache parse error", e);
       }
       try {
-        const supabase = supabaseBrowser();
-        const { data, error } = await supabase
-          .from("map_style_current")
-          .select("config")
-          .single();
-        const fresh = (data?.config as MapStyleConfig) || DEFAULT_THEME;
+        const fetchTheme = async () => {
+          const supabase = supabaseBrowser();
+          const { data } = await supabase
+            .from("map_style_current")
+            .select("config")
+            .single();
+          return data?.config as unknown;
+        };
+        const raw = await safeFetch(fetchTheme, { retries: 2, delayMs: 200, label: "map_style_current" });
+        let fresh: MapStyleConfig = DEFAULT_THEME;
+        try {
+          const parsed = mapStyleConfigSchema.parse(raw);
+          fresh = parsed as MapStyleConfig;
+        } catch (e) {
+          console.warn("[map] theme parse failed; using default", e);
+          fresh = DEFAULT_THEME;
+        }
         const newStr = JSON.stringify(fresh);
         const oldStr = typeof window !== "undefined" ? localStorage.getItem("mapTheme:current") : null;
         if (oldStr !== newStr) {
@@ -163,8 +214,34 @@ export default function MapView({ user }: MapViewProps) {
           applyTheme(fresh);
         }
       } catch (e) {
-        console.warn("[map] theme fetch failed, using default", e);
+        console.warn("[map] theme fetch failed; using default", e);
         if (!appliedFromCache) applyTheme(DEFAULT_THEME);
+      }
+      // Hydrate user settings for style_key/last_view
+      try {
+        const supabase = supabaseBrowser();
+        const { data: { session } } = await supabase.auth.getSession();
+        const userId = session?.user?.id;
+        if (userId) {
+          const { data: settings } = await supabase
+            .from("user_settings")
+            .select("map")
+            .eq("user_id", userId)
+            .single();
+          const mapSettings = (settings?.map as any) || {};
+          const remoteStyleKey = mapSettings?.style_key as StyleKey | undefined;
+          const remoteLastView = mapSettings?.last_view as any;
+          if (remoteLastView && typeof window !== "undefined") {
+            try { localStorage.setItem("map:last_view", JSON.stringify(remoteLastView)); } catch {}
+          }
+          if (remoteStyleKey && remoteStyleKey !== styleKey) {
+            try { localStorage.setItem("map:style_key", remoteStyleKey); } catch {}
+            setStyleKey(remoteStyleKey);
+            setStyleUrl(styleUrlFor(remoteStyleKey));
+          }
+        }
+      } catch (e) {
+        console.warn("[map] failed to hydrate user settings", e);
       }
       window.clearTimeout(timeoutId);
       window.clearTimeout(quickId);
@@ -180,6 +257,7 @@ export default function MapView({ user }: MapViewProps) {
 
     return () => {
       if (map.current) {
+        try { (map.current as any)._resizeObserver?.disconnect?.(); } catch {}
         map.current.remove();
         map.current = null;
       }
@@ -237,6 +315,26 @@ export default function MapView({ user }: MapViewProps) {
             labelLayerId
           );
         }
+        // Re-apply theme from cache after style reload
+        try {
+          const cached = typeof window !== "undefined" ? localStorage.getItem("mapTheme:current") : null;
+          const cfg = cached ? (JSON.parse(cached) as MapStyleConfig) : DEFAULT_THEME;
+          configureVisualTheme(m, cfg, { styleKey, isSatellite: styleKey === "satellite", staged: true });
+        } catch {}
+        // Collect themed layer matches for HUD (first 8 per category)
+        try {
+          const coll = (ids: string[]) => ids.filter((id) => !!m.getLayer(id)).slice(0, 8);
+          const isSat = styleKey === "satellite";
+          setThemeInfo({
+            water: coll(["water"]),
+            parks: isSat ? [] : coll(["park"]),
+            roads: isSat ? [] : coll(["road-motorway", "road-primary", "road-secondary", "road-street"]),
+            labels: coll(["place-label", "poi-label"]),
+            transit: coll(["transit-line"]),
+            buildings: coll(["3d-buildings"]),
+            skipped: isSat ? ["water", "parks", "roads"] : [],
+          });
+        } catch {}
       } catch {}
     };
     m.on("style.load", onStyle);
@@ -467,42 +565,142 @@ export default function MapView({ user }: MapViewProps) {
     else m.once("load", ensureLayers);
   }, [nearbyGeoJson, styleUrl]);
 
+  // Apply interaction preferences when available
+  useEffect(() => {
+    if (!map.current) return;
+    const applyInteraction = (prefs: any) => {
+      try { prefs.dragRotate ? map.current?.dragRotate?.enable?.() : map.current?.dragRotate?.disable?.(); } catch {}
+      try { prefs.touchZoomRotate ? map.current?.touchZoomRotate?.enable?.() : map.current?.touchZoomRotate?.disable?.(); } catch {}
+      try { prefs.scrollZoom ? map.current?.scrollZoom?.enable?.() : map.current?.scrollZoom?.disable?.(); } catch {}
+      try { prefs.keyboard ? map.current?.keyboard?.enable?.() : map.current?.keyboard?.disable?.(); } catch {}
+      try { prefs.dragPan ? map.current?.dragPan?.enable?.() : map.current?.dragPan?.disable?.(); } catch {}
+      try { if (map.current && (map.current as any).inertiaOptions) { (map.current as any).inertiaOptions.deceleration = prefs.inertia ? (map.current as any).inertiaOptions.deceleration : 0; } } catch {}
+      try { if (map.current && (map.current as any)._handlers?.scrollZoom) { (map.current as any)._handlers.scrollZoom._speed = Math.max(0.01, (prefs.wheelZoomRate || 1.0)); } } catch {}
+    };
+    // From localStorage (fast) then hydrate via live events
+    try {
+      const raw = localStorage.getItem("user:prefs:map:interaction");
+      if (raw) applyInteraction(JSON.parse(raw));
+    } catch {}
+    const onPrefs = (e: any) => {
+      const inter = e?.detail?.interaction;
+      if (inter) {
+        applyInteraction(inter);
+        try { localStorage.setItem("user:prefs:map:interaction", JSON.stringify(inter)); } catch {}
+      }
+    };
+    window.addEventListener("map:prefs-change", onPrefs as any);
+    return () => { window.removeEventListener("map:prefs-change", onPrefs as any); };
+  }, []);
+
+  // Persist last_view on interactions (debounced local cache, throttled network)
+  useEffect(() => {
+    if (!map.current) return;
+    const m = map.current;
+    const handler = () => {
+      if (saveTimer.current) { window.clearTimeout(saveTimer.current); }
+      saveTimer.current = window.setTimeout(async () => {
+        const last = { center: m.getCenter().toArray() as [number, number], zoom: m.getZoom(), pitch: m.getPitch(), bearing: m.getBearing() };
+        // Write cache immediately
+        try { localStorage.setItem("map:last_view", JSON.stringify(last)); } catch {}
+        // Throttle Supabase writes to at most every 5s
+        const now = Date.now();
+        if (now - lastSupabaseWriteAt.current >= 5000) {
+          lastSupabaseWriteAt.current = now;
+          try {
+            const supabase = supabaseBrowser();
+            const { data: { session } } = await supabase.auth.getSession();
+            const userId = session?.user?.id;
+            if (userId) {
+              await supabase.from("user_settings").upsert({ user_id: userId, map: { last_view: last } } as any, { onConflict: "user_id" } as any);
+            }
+          } catch {}
+        }
+      }, 800) as unknown as number;
+    };
+    m.on("moveend", handler);
+    m.on("pitchend", handler);
+    m.on("rotateend", handler);
+    return () => {
+      m.off("moveend", handler);
+      m.off("pitchend", handler);
+      m.off("rotateend", handler);
+      if (saveTimer.current) window.clearTimeout(saveTimer.current);
+    };
+  }, [styleUrl]);
+
+  // Listen for live style changes from settings page
+  useEffect(() => {
+    const onChange = (e: any) => {
+      const nextKey = e?.detail?.style_key as StyleKey | undefined;
+      if (!nextKey || nextKey === styleKey) return;
+      setStyleKey(nextKey);
+      setStyleUrl(styleUrlFor(nextKey));
+      try { localStorage.setItem("map:style_key", nextKey); } catch {}
+    };
+    window.addEventListener("map:style-change", onChange as any);
+    return () => { window.removeEventListener("map:style-change", onChange as any); };
+  }, [styleKey]);
+
   // onSubmitPlace and related modal handlers removed
 
   return (
     <div className="relative h-screen">
-      {/* Style switcher */}
-      <div className="absolute top-4 left-4 z-30 bg-white/80 backdrop-blur px-2 py-1 rounded shadow">
+      {/* Style switcher + Theme HUD */}
+      <div className="absolute top-4 left-4 z-30 bg-white/80 backdrop-blur px-2 py-1 rounded shadow pointer-events-none">
         <label className="text-xs text-gray-600 mr-2">Style</label>
         <select
-          className="text-sm border rounded px-2 py-1 bg-white"
+          className="text-sm border rounded px-2 py-1 bg-white pointer-events-auto"
           value={styleKey}
-          onChange={(e) => {
+          onChange={async (e) => {
             const nextKey = e.target.value as StyleKey;
             if (nextKey === styleKey) return;
             setStyleKey(nextKey);
-            const current = map.current;
-            const camera = current ? { center: current.getCenter().toArray() as [number, number], zoom: current.getZoom(), pitch: current.getPitch(), bearing: current.getBearing() } : null;
             const nextUrl = styleUrlFor(nextKey);
             setStyleUrl(nextUrl);
-            if (current) {
-              current.once("style.load", () => {
-                try {
-                  const cached = localStorage.getItem("mapTheme:current");
-                  const cfg = cached ? (JSON.parse(cached) as MapStyleConfig) : DEFAULT_THEME;
-                  configureVisualTheme(current, cfg, { styleKey: nextKey });
-                } catch {}
-                // Re-mount layers after style reload
-                // minimal ensure by triggering our existing effects via data changes
-              });
-              current.setStyle(nextUrl);
-            }
+            try { localStorage.setItem("map:style_key", nextKey); } catch {}
+            try {
+              const supabase = supabaseBrowser();
+              const { data: { session } } = await supabase.auth.getSession();
+              const userId = session?.user?.id;
+              if (userId) {
+                await supabase.from("user_settings").upsert({ user_id: userId, map: { style_key: nextKey } } as any, { onConflict: "user_id" } as any);
+              }
+            } catch {}
+            try { window.dispatchEvent(new CustomEvent("map:style-change", { detail: { style_key: nextKey } })); } catch {}
           }}
         >
           {styles.map((s) => (
             <option key={s.id} value={s.id}>{s.label}</option>
           ))}
         </select>
+        {/* Theme HUD for debugging themed vs skipped */}
+        <div className="mt-2 text-[10px] text-gray-700 grid grid-cols-2 gap-1">
+          <div>
+            <div className="font-semibold">Water</div>
+            <div className="truncate max-w-[160px]" title={themeInfo.water.join(", ")}>{themeInfo.water.join(", ") || "-"}</div>
+          </div>
+          <div>
+            <div className="font-semibold">Parks</div>
+            <div className="truncate max-w-[160px]" title={themeInfo.parks.join(", ")}>{themeInfo.parks.join(", ") || (styleKey === 'satellite' ? "(skipped)" : "-")}</div>
+          </div>
+          <div>
+            <div className="font-semibold">Roads</div>
+            <div className="truncate max-w-[160px]" title={themeInfo.roads.join(", ")}>{themeInfo.roads.join(", ") || (styleKey === 'satellite' ? "(skipped)" : "-")}</div>
+          </div>
+          <div>
+            <div className="font-semibold">Labels</div>
+            <div className="truncate max-w-[160px]" title={themeInfo.labels.join(", ")}>{themeInfo.labels.join(", ") || "-"}</div>
+          </div>
+          <div>
+            <div className="font-semibold">Transit</div>
+            <div className="truncate max-w-[160px]" title={themeInfo.transit.join(", ")}>{themeInfo.transit.join(", ") || "-"}</div>
+          </div>
+          <div>
+            <div className="font-semibold">Buildings</div>
+            <div className="truncate max-w-[160px]" title={themeInfo.buildings.join(", ")}>{themeInfo.buildings.join(", ") || "-"}</div>
+          </div>
+        </div>
       </div>
 
       <div ref={mapContainer} className="h-[calc(100vh-64px)] w-full" />
@@ -518,7 +716,7 @@ export default function MapView({ user }: MapViewProps) {
       )}
       
       {/* Nearby Places Control */}
-      <div className="absolute top-4 right-4 z-30">
+      <div className="absolute top-4 right-4 z-30 pointer-events-none">
         <Button
           onClick={() => {
             if (map.current) {
@@ -527,7 +725,7 @@ export default function MapView({ user }: MapViewProps) {
             }
           }}
           disabled={isLoadingNearby}
-          className="bg-green-600 hover:bg-green-700 text-white shadow-lg"
+          className="bg-green-600 hover:bg-green-700 text-white shadow-lg pointer-events-auto"
         >
           {isLoadingNearby ? "Loading..." : "Find Nearby (2km)"}
         </Button>

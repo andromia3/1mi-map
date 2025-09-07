@@ -10,7 +10,9 @@
     "build": "node scripts/verify-clean.js && next build && node scripts/verify-postbuild.js",
     "start": "next start",
     "lint": "next lint",
-    "verify-clean": "node scripts/verify-clean.js"
+    "verify-clean": "node scripts/verify-clean.js",
+    "test:e2e": "playwright test",
+    "test:unit": "vitest run"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.3.2",
@@ -35,6 +37,8 @@
     "react-error-boundary": "^4.0.13"
   },
   "devDependencies": {
+    "@playwright/test": "^1.47.2",
+    "vitest": "^2.0.5",
     "@types/mapbox-gl": "^3.4.1",
     "@types/node": "^20.19.13",
     "@types/react": "^18",

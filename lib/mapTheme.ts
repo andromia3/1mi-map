@@ -46,6 +46,55 @@ export type MapStyleConfig = {
   };
 };
 
+// zod schema for validating MapStyleConfig from DB
+import { z } from 'zod';
+export const zoomRampSchema = z.record(z.string(), z.number());
+export const mapStyleConfigSchema = z.object({
+  palette: z.object({
+    land: z.string(),
+    water: z.string(),
+    park: z.string(),
+    building: z.string(),
+    labelHalo: z.string(),
+  }),
+  parks: z.object({
+    opacity: z.number(),
+    minAreaM2: z.number(),
+    minZoom: z.number(),
+    tinyParksShowZoom: z.number(),
+  }),
+  roads: z.object({
+    motorwayWidth: zoomRampSchema,
+    primaryWidth: zoomRampSchema,
+    secondaryWidth: zoomRampSchema,
+    residentialOpacity: zoomRampSchema,
+  }),
+  labels: z.object({
+    haloWidth: z.number(),
+    poiTextSize: zoomRampSchema,
+  }),
+  transit: z.object({
+    minZoom: z.number(),
+    lineOpacity: zoomRampSchema,
+    classes: z.array(z.string()),
+  }),
+  buildings3d: z.object({
+    minZoom: z.number(),
+    opacity: z.number(),
+    minHeight: z.number(),
+  }),
+  camera: z.object({
+    center: z.tuple([z.number(), z.number()]),
+    zoom: z.number(),
+    pitch: z.number(),
+    bearing: z.number(),
+  }),
+  fog: z.object({
+    range: z.tuple([z.number(), z.number()]),
+    horizonBlend: z.number(),
+  }),
+});
+
 export const DEFAULT_THEME: MapStyleConfig = {
   palette: {
     land: "#EDEDD5",
