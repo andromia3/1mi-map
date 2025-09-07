@@ -55,6 +55,7 @@ export default function MapView({ user }: MapViewProps) {
 
     // Ensure Mapbox token exists
     const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "pk.eyJ1IjoiYW5kcm9taWEiLCJhIjoiY21mOXA0eWphMDlpODJscW9weWlvNXB0biJ9.lt-cpkt9IgVZwigPpimEBw"
+    console.log("[map] token present:", Boolean(token))
     if (!token) {
       setError("Missing NEXT_PUBLIC_MAPBOX_TOKEN. Please set it in Netlify envs.")
       setIsLoading(false)
@@ -62,12 +63,19 @@ export default function MapView({ user }: MapViewProps) {
     }
     mapboxgl.accessToken = token
 
-    map.current = new mapboxgl.Map({
-      container: mapContainer.current,
-      style: "mapbox://styles/mapbox/light-v11",
-      center: [-0.1276, 51.5072], // London
-      zoom: 11,
-    })
+    try {
+      map.current = new mapboxgl.Map({
+        container: mapContainer.current,
+        style: "mapbox://styles/mapbox/light-v11",
+        center: [-0.1276, 51.5072], // London
+        zoom: 11,
+      })
+    } catch (err) {
+      console.error("[map] Failed to create Mapbox instance:", err)
+      setError("Failed to create map. See console for details.")
+      setIsLoading(false)
+      return
+    }
 
     // Fallback timeout in case load/error never fires
     const timeoutId = window.setTimeout(() => {
@@ -77,9 +85,18 @@ export default function MapView({ user }: MapViewProps) {
       }
     }, 12000)
 
+    // Extra quick fallback to ensure we never hang
+    const quickId = window.setTimeout(() => {
+      if (isLoading) {
+        console.warn("[map] Quick fallback released spinner before load/error")
+        setIsLoading(false)
+      }
+    }, 4000)
+
     map.current.on("load", () => {
       setIsLoading(false)
       window.clearTimeout(timeoutId)
+      window.clearTimeout(quickId)
     })
 
     map.current.on("error", (e) => {
@@ -87,6 +104,7 @@ export default function MapView({ user }: MapViewProps) {
       setError("Failed to load map. Check Mapbox token and network.")
       setIsLoading(false)
       window.clearTimeout(timeoutId)
+      window.clearTimeout(quickId)
     })
 
     map.current.on("click", (e) => {
@@ -100,6 +118,7 @@ export default function MapView({ user }: MapViewProps) {
         map.current = null
       }
       window.clearTimeout(timeoutId)
+      window.clearTimeout(quickId)
     }
   }, [isLoading])
 
