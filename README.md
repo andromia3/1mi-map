@@ -408,3 +408,166 @@ This project is private and proprietary to the 1MI Members' Club.
 ---
 
 **Built with ❤️ for the 1MI Members' Club**
+
+---
+
+## 📚 Table of Contents
+
+- Overview and Goals
+- Architecture and Data Flow
+- Styling System (Code-Only Mapbox Theme)
+- Map Features and UX Enhancements
+- Persistence and Settings
+- Security and RLS
+- Local Development (Env, Scripts, Running)
+- Testing (Unit + Visual Regression)
+- Migrations and Database Ops
+- Performance Tips
+- Troubleshooting (Extended)
+- FAQ
+
+## 🎯 Overview and Goals
+
+This app provides a premium, low-latency mapping experience for members to discover and share places. Styling is 100% code-based (no DB reads for theme), while Supabase remains the source for all geo data (places/meetups/houses). The result is predictable theming, fast first paint, and robust fallbacks during network turbulence.
+
+## 🧱 Architecture and Data Flow
+
+- Next.js 14 App Router + TypeScript
+- Supabase for Auth + Postgres/PostGIS (data only)
+- Mapbox GL JS for web map rendering
+- Client data flows:
+  - Auth (middleware protects `/map`)
+  - Places loaded via Supabase RPC and table reads
+  - Map styling applied client-side from constants in code
+
+### Key Modules
+
+- `lib/map/theme.ts`
+  - `DEFAULT_THEME`, `STYLE_URLS`, `StyleKey`
+- `lib/map/mapboxHelpers.ts`
+  - `safePaint`, `safeLayout`, `safeAddLayer`, `findFirstLayerId` (no-throw helpers)
+- `lib/configureVisualTheme.ts`
+  - Applies code-only Mapbox styling in staged frames for smoother first paint
+- `components/MapView.tsx`
+  - Initializes Mapbox, applies theme, mounts data layers, handles persistence
+
+## 🎨 Styling System (Code-Only)
+
+All map styling is computed client-side with constants and safe operations.
+
+- Base style URLs: `STYLE_URLS` (`standard`/`satellite-streets`)
+- Theme constants: `DEFAULT_THEME` (water/land/parks/roads/labels/transit/buildings3d/fog/camera)
+- Theming order (guarded):
+  1) Fog
+  2) Water/Land/Parks (skipped on satellite)
+  3) Labels (halo, POI size ramp, waterway legibility)
+  4) Transit (min zoom, opacity ramp)
+  5) Roads (width ramps + subtle casings)
+  6) 3D buildings with vertical-gradient and height-tinted color
+
+### Terrain + Sky
+
+After style load, we add DEM, enable terrain, and add a sky layer. All are wrapped in try/catch and skipped gracefully if unavailable.
+
+### Extra Context Layers
+
+- Borough boundaries (admin level 8): subtle, dashed overlay
+- Footpaths: dashed `path/pedestrian` with optional directional arrows
+- Tall building accent: light highlight for height ≥120m
+- Thames glow: gentle line glow improving water readability
+
+## 🧩 Map Features and UX Enhancements
+
+- Instant style and camera restore from localStorage to avoid flicker
+- Smooth transforms (custom easing) and resize observer to eliminate blur
+- Vignette overlay for subtle center-focus
+- Consistent symbol alignment and size at high pitch
+
+## 💾 Persistence and Settings
+
+- Local-only persistence:
+  - `map:style_key`: last chosen style
+  - `map:last_view`: `{ center, zoom, pitch, bearing }`
+- Settings page (`/settings/map`):
+  - Choose style (`default|night|satellite`)
+  - Toggles: 3D buildings, transit
+  - Sliders: label density, road contrast
+  - Interaction preferences: dragRotate, touchZoomRotate, scrollZoom, keyboard, dragPan, inertia, wheel zoom rate
+- Live events broadcast to open map instances to apply changes without reload
+
+## 🔐 Security and RLS
+
+- RLS enforced for `profiles` and `user_settings` (self-only policies)
+- Places have view/insert/update/delete rules as documented above
+
+## 🧪 Testing (Unit + Visual Regression)
+
+### Unit Tests (Vitest)
+
+```bash
+npm run test:unit
+```
+
+- Includes RLS guard test (requires two seeded test users)
+
+### Visual Regression (Playwright)
+
+```bash
+npm run test:e2e
+```
+
+- Snapshots for `/map` across `default|night|satellite` with ~3% tolerance
+- Middleware bypass via `?__e2e=1` for authless loading during tests
+
+## 🗃️ Migrations and Database Ops
+
+- Row-level security policies (`migrations/2025-09-07_rls_self_only.sql`)
+- Backfill user settings defaults (`migrations/2025-09-07_backfill_user_settings_map.sql`)
+- Place schema and `nearby_places` RPC (see above SQL)
+
+## ⚙️ Local Development (Extended)
+
+### Environment
+
+- Node 18+ (recommend Node 20)
+- `mapbox-gl` >= 2.7.0
+
+### Scripts
+
+```bash
+npm run dev       # Start app
+npm run build     # Prod build (lint + type check + build)
+npm run start     # Serve prod build
+npm run lint      # ESLint
+npm run test:unit # Vitest
+npm run test:e2e  # Playwright
+```
+
+### Configuration Sources
+
+- `.env.local`: Supabase + Mapbox tokens
+- LocalStorage keys: `map:style_key`, `map:last_view`
+
+## 🚀 Performance Tips
+
+- Keep `easeTo` durations ≤ 500ms with easing for perceived smoothness
+- Rely on staged theme application to reduce FOUC
+- Avoid heavy synchronous work in `style.load`; use `requestAnimationFrame`
+
+## 🩺 Troubleshooting (Extended)
+
+- Map looks flat: ensure DEM source adds successfully and terrain is set
+- Satellite looks over-styled: verify recolors are skipped in code-only theme for satellite
+- Symbols warp at pitch: verify `icon-rotation-alignment: map` and `icon-pitch-alignment: viewport`
+- Visual tests failing: regenerate snapshots intentionally after acceptable changes
+
+## ❓ FAQ
+
+**Q: Why code-only theming?**
+A: Predictability, fewer round trips, simpler diff/PR review, and instant local application.
+
+**Q: Can I add a new style?**
+A: Add a new key to `STYLE_URLS`, update settings UI if user-facing, and adjust `DEFAULT_THEME` if needed.
+
+**Q: Do we support offline?**
+A: Not fully; however, local restore (style + last view) reduces perceived latency.

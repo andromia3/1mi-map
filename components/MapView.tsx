@@ -5,10 +5,10 @@ import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { Button } from "@/components/ui/button";
 import { supabaseBrowser } from "@/lib/supabase/browser";
-import { DEFAULT_THEME, type MapStyleConfig, type StyleKey, mapStyleConfigSchema } from "@/lib/mapTheme";
-import { safeFetch } from "@/lib/safeFetch";
+import { DEFAULT_THEME, type MapStyleConfig, type StyleKey, STYLE_URLS } from "@/lib/theme";
 import { configureVisualTheme } from "@/lib/configureVisualTheme";
 import type { Database } from "@/lib/supabase/types";
+import MapVignetteOverlay from "./MapVignetteOverlay";
 
 // Add-new-place functionality removed for now
 type Place = Database["public"]["Tables"]["places"]["Row"];
@@ -30,15 +30,27 @@ export default function MapView({ user }: MapViewProps) {
   const [userCenter, setUserCenter] = useState<[number, number] | null>(null);
   const [themeInfo, setThemeInfo] = useState<{ water: string[]; parks: string[]; roads: string[]; labels: string[]; transit: string[]; buildings: string[]; skipped?: string[] }>({ water: [], parks: [], roads: [], labels: [], transit: [], buildings: [] });
   const styles = [
-    { id: "default", label: "Standard", url: "mapbox://styles/mapbox/standard" },
-    { id: "night", label: "Night", url: "mapbox://styles/mapbox/standard" },
-    { id: "satellite", label: "Satellite", url: "mapbox://styles/mapbox/satellite-streets-v12" },
+    { id: "default", label: "Light", url: STYLE_URLS.default },
+    { id: "night", label: "Dark", url: STYLE_URLS.night },
+    { id: "satellite", label: "Satellite", url: STYLE_URLS.satellite },
   ];
-  const styleUrlFor = (key: StyleKey) => (key === "satellite" ? "mapbox://styles/mapbox/satellite-streets-v12" : "mapbox://styles/mapbox/standard");
-  const initialStyleKey = (typeof window !== "undefined" ? (localStorage.getItem("map:style_key") as StyleKey | null) : null) || "default";
+  const styleUrlFor = (key: StyleKey) => STYLE_URLS[key];
+  const initialStyleKey = (typeof window !== "undefined" ? ((new URLSearchParams(window.location.search).get("style") as StyleKey) || (localStorage.getItem("map:style_key") as StyleKey | null)) : null) || "default";
   const [styleKey, setStyleKey] = useState<StyleKey>(initialStyleKey);
   const [styleUrl, setStyleUrl] = useState<string>(styleUrlFor(initialStyleKey));
   const saveTimer = useRef<number | null>(null);
+  const applyStyleKey = (nextKey: StyleKey) => {
+    if (nextKey === styleKey && map.current) return;
+    setStyleKey(nextKey);
+    const nextUrl = styleUrlFor(nextKey);
+    setStyleUrl(nextUrl);
+    try { localStorage.setItem("map:style_key", nextKey); } catch {}
+    // Force immediate style swap for reliability
+    try { map.current?.setStyle(nextUrl); } catch {}
+  };
+
+  // Feature flags
+  const SHOW_PLACES = false; // hide all place markers/clusters
   const lastSupabaseWriteAt = useRef<number>(0);
 
   // Forms, validation, and modal for adding new places have been removed
@@ -171,78 +183,20 @@ export default function MapView({ user }: MapViewProps) {
     map.current.on("load", async () => {
       console.log("[map] event:load fired, styleLoaded=", map.current?.isStyleLoaded?.());
       setIsLoading(false);
-      map.current?.resize();
-      // Theme caching: apply cached theme immediately, then refresh from Supabase
-      const applyTheme = (cfg: MapStyleConfig) => {
-        try { configureVisualTheme(map.current!, cfg, { styleKey, isSatellite: styleKey === "satellite", staged: true }); } catch (e) { console.warn("[map] theme apply failed", e); }
-      };
-      let appliedFromCache = false;
+      const mc = map.current!;
+      mc.resize();
+      try { mc.easeTo({ duration: 0 }); } catch {}
+      // Apply code-only theme and terrain
+      try { configureVisualTheme(mc, DEFAULT_THEME, { isSatellite: styleKey === "satellite" }); } catch (e) { console.warn("[map] theme apply failed", e); }
       try {
-        const cached = typeof window !== "undefined" ? localStorage.getItem("mapTheme:current") : null;
-        if (cached) {
-          const cfg = JSON.parse(cached) as MapStyleConfig;
-          applyTheme(cfg);
-          appliedFromCache = true;
+        if (!mc.getSource("mapbox-dem")) {
+          mc.addSource("mapbox-dem", { type: "raster-dem", url: "mapbox://mapbox.mapbox-terrain-dem-v1", tileSize: 512, maxzoom: 14 } as any);
         }
-      } catch (e) {
-        console.warn("[map] theme cache parse error", e);
-      }
-      try {
-        const fetchTheme = async () => {
-          const supabase = supabaseBrowser();
-          const { data } = await supabase
-            .from("map_style_current")
-            .select("config")
-            .single();
-          return data?.config as unknown;
-        };
-        const raw = await safeFetch(fetchTheme, { retries: 2, delayMs: 200, label: "map_style_current" });
-        let fresh: MapStyleConfig = DEFAULT_THEME;
-        try {
-          const parsed = mapStyleConfigSchema.parse(raw);
-          fresh = parsed as MapStyleConfig;
-        } catch (e) {
-          console.warn("[map] theme parse failed; using default", e);
-          fresh = DEFAULT_THEME;
+        mc.setTerrain({ source: "mapbox-dem", exaggeration: 1.0 } as any);
+        if (!mc.getLayer("sky")) {
+          mc.addLayer({ id: "sky", type: "sky", paint: { "sky-type": "atmosphere", "sky-atmosphere-sun-intensity": 10 } } as any);
         }
-        const newStr = JSON.stringify(fresh);
-        const oldStr = typeof window !== "undefined" ? localStorage.getItem("mapTheme:current") : null;
-        if (oldStr !== newStr) {
-          applyTheme(fresh);
-          try { localStorage.setItem("mapTheme:current", newStr); } catch {}
-        } else if (!appliedFromCache) {
-          applyTheme(fresh);
-        }
-      } catch (e) {
-        console.warn("[map] theme fetch failed; using default", e);
-        if (!appliedFromCache) applyTheme(DEFAULT_THEME);
-      }
-      // Hydrate user settings for style_key/last_view
-      try {
-        const supabase = supabaseBrowser();
-        const { data: { session } } = await supabase.auth.getSession();
-        const userId = session?.user?.id;
-        if (userId) {
-          const { data: settings } = await supabase
-            .from("user_settings")
-            .select("map")
-            .eq("user_id", userId)
-            .single();
-          const mapSettings = (settings?.map as any) || {};
-          const remoteStyleKey = mapSettings?.style_key as StyleKey | undefined;
-          const remoteLastView = mapSettings?.last_view as any;
-          if (remoteLastView && typeof window !== "undefined") {
-            try { localStorage.setItem("map:last_view", JSON.stringify(remoteLastView)); } catch {}
-          }
-          if (remoteStyleKey && remoteStyleKey !== styleKey) {
-            try { localStorage.setItem("map:style_key", remoteStyleKey); } catch {}
-            setStyleKey(remoteStyleKey);
-            setStyleUrl(styleUrlFor(remoteStyleKey));
-          }
-        }
-      } catch (e) {
-        console.warn("[map] failed to hydrate user settings", e);
-      }
+      } catch {}
       window.clearTimeout(timeoutId);
       window.clearTimeout(quickId);
     });
@@ -315,11 +269,100 @@ export default function MapView({ user }: MapViewProps) {
             labelLayerId
           );
         }
-        // Re-apply theme from cache after style reload
+        // Subtle accent for very tall buildings (>=120m)
         try {
-          const cached = typeof window !== "undefined" ? localStorage.getItem("mapTheme:current") : null;
-          const cfg = cached ? (JSON.parse(cached) as MapStyleConfig) : DEFAULT_THEME;
-          configureVisualTheme(m, cfg, { styleKey, isSatellite: styleKey === "satellite", staged: true });
+          if (m.getLayer("3d-buildings") && !m.getLayer("3d-buildings-tall")) {
+            m.addLayer({
+              id: "3d-buildings-tall",
+              source: "composite",
+              "source-layer": "building",
+              type: "fill-extrusion",
+              minzoom: 15,
+              filter: [">=", ["coalesce", ["get", "height"], 0], 120],
+              paint: {
+                "fill-extrusion-color": "#B0B0B0",
+                "fill-extrusion-opacity": 1.0,
+                "fill-extrusion-height": ["coalesce", ["get", "height"], 120],
+                "fill-extrusion-base": ["coalesce", ["get", "min_height"], 0],
+              },
+            } as any, labelLayerId);
+          }
+        } catch {}
+        // Borough boundaries (admin level 8) — subtle context, skip silently if missing
+        try {
+          const adminCandidate = layers.find((l: any) => l?.source === "composite" && typeof l?.["source-layer"] === "string" && l?.["source-layer"].includes("admin"));
+          const adminSourceLayer = adminCandidate?.["source-layer"] || "admin";
+          if (!m.getLayer("borough-boundaries")) {
+            m.addLayer({
+              id: "borough-boundaries",
+              type: "line",
+              source: "composite",
+              "source-layer": adminSourceLayer,
+              minzoom: 9.5,
+              filter: ["==", ["get", "admin_level"], 8],
+              paint: {
+                "line-color": "#000000",
+                "line-opacity": 0.15,
+                "line-width": 0.8,
+                "line-dasharray": [2, 2],
+              },
+            } as any, labelLayerId);
+          }
+        } catch {}
+        // Pedestrian paths: dashed subtle lines for movement cues
+        try {
+          const roadCandidate = layers.find((l: any) => l?.source === "composite" && typeof l?.["source-layer"] === "string" && l?.["source-layer"].includes("road"));
+          const roadSourceLayer = roadCandidate?.["source-layer"] || "road";
+          const filterPed = ["in", ["get", "class"], ["literal", ["path", "pedestrian"]]] as any;
+          if (!m.getLayer("footpaths")) {
+            m.addLayer({
+              id: "footpaths",
+              type: "line",
+              source: "composite",
+              "source-layer": roadSourceLayer,
+              minzoom: 12,
+              filter: filterPed,
+              paint: {
+                "line-color": "#000000",
+                "line-opacity": 0.35,
+                "line-dasharray": [2, 2],
+                "line-width": [
+                  "interpolate", ["linear"], ["zoom"],
+                  12, 0.6,
+                  16, 1.2
+                ],
+              },
+            } as any, labelLayerId);
+          }
+          // Optional arrows along line if sprite contains a suitable icon
+          try {
+            const arrowIcon = (m.hasImage as any)?.call(m, "oneway-small") ? "oneway-small" : null;
+            if (arrowIcon && !m.getLayer("footpaths-arrows")) {
+              m.addLayer({
+                id: "footpaths-arrows",
+                type: "symbol",
+                source: "composite",
+                "source-layer": roadSourceLayer,
+                minzoom: 13,
+                filter: filterPed,
+                layout: {
+                  "symbol-placement": "line",
+                  "symbol-spacing": 80,
+                  "icon-image": arrowIcon,
+                  "icon-size": ["interpolate", ["linear"], ["zoom"], 12, 0.6, 16, 0.9],
+                  "icon-rotation-alignment": "map",
+                  "icon-pitch-alignment": "viewport",
+                },
+                paint: {
+                  "icon-opacity": 0.2,
+                },
+              } as any, labelLayerId);
+            }
+          } catch {}
+        } catch {}
+        // Re-apply theme after style reload
+        try {
+          configureVisualTheme(m, DEFAULT_THEME, { isSatellite: styleKey === "satellite" });
         } catch {}
         // Collect themed layer matches for HUD (first 8 per category)
         try {
@@ -425,9 +468,9 @@ export default function MapView({ user }: MapViewProps) {
     })),
   }), [places, user])
 
-  // Clustered places layer
+  // Clustered places layer (disabled when SHOW_PLACES=false)
   useEffect(() => {
-    if (!map.current) return;
+    if (!map.current || !SHOW_PLACES) return;
     const m = map.current;
     const sourceId = "places-src";
     const clusterLayer = "places-clusters";
@@ -471,7 +514,9 @@ export default function MapView({ user }: MapViewProps) {
           filter: ["has", "point_count"],
           layout: {
             "text-field": ["get", "point_count_abbreviated"],
-            "text-size": 12,
+            "text-size": ["interpolate", ["linear"], ["zoom"], 10, 11, 14, 13, 18, 15],
+            "text-rotation-alignment": "map",
+            "text-pitch-alignment": "viewport",
           },
           paint: { "text-color": "#0f172a" },
         } as any);
@@ -489,6 +534,29 @@ export default function MapView({ user }: MapViewProps) {
           },
         } as any);
 
+        // Optional symbol marker for unclustered to test pitch alignment consistency (hidden by default)
+        try {
+          if (!m.getLayer("places-unclustered-symbol")) {
+            m.addLayer({
+              id: "places-unclustered-symbol",
+              type: "symbol",
+              source: sourceId,
+              filter: ["!has", "point_count"],
+              layout: {
+                "icon-image": ["coalesce", ["get", "icon"], "marker-15"],
+                "icon-size": ["interpolate", ["linear"], ["zoom"], 10, 0.8, 16, 1.2],
+                "icon-rotation-alignment": "map",
+                "icon-pitch-alignment": "viewport",
+                "icon-allow-overlap": true,
+                "visibility": "none",
+              },
+              paint: {
+                "icon-opacity": 0.9,
+              },
+            } as any);
+          }
+        } catch {}
+
         m.on("click", clusterLayer, (e: any) => {
           const features = m.queryRenderedFeatures(e.point, { layers: [clusterLayer] }) || [];
           const feature = features[0];
@@ -498,7 +566,7 @@ export default function MapView({ user }: MapViewProps) {
           (m.getSource(sourceId) as any).getClusterExpansionZoom(clusterId, (err: any, zoom: number) => {
             if (err) return;
             const coords = (feature.geometry as any).coordinates as [number, number];
-            m.easeTo({ center: coords, zoom, duration: 600 });
+            m.easeTo({ center: coords, zoom, duration: 400, easing: (t: number) => 1 - Math.pow(1 - t, 1.42) });
           });
         });
 
@@ -519,7 +587,7 @@ export default function MapView({ user }: MapViewProps) {
 
     if (m.isStyleLoaded()) ensureLayers();
     else m.once("load", ensureLayers);
-  }, [placesGeoJson, styleUrl]);
+  }, [placesGeoJson, styleUrl, SHOW_PLACES]);
 
   // Nearby layer (non-clustered)
   const nearbyGeoJson = useMemo(() => ({
@@ -537,7 +605,7 @@ export default function MapView({ user }: MapViewProps) {
   }), [nearbyPlaces, user]);
 
   useEffect(() => {
-    if (!map.current) return;
+    if (!map.current || !SHOW_PLACES) return;
     const m = map.current;
     const sourceId = "nearby-src";
     const layerId = "nearby-circles";
@@ -563,7 +631,7 @@ export default function MapView({ user }: MapViewProps) {
 
     if (m.isStyleLoaded()) ensureLayers();
     else m.once("load", ensureLayers);
-  }, [nearbyGeoJson, styleUrl]);
+  }, [nearbyGeoJson, styleUrl, SHOW_PLACES]);
 
   // Apply interaction preferences when available
   useEffect(() => {
@@ -593,7 +661,7 @@ export default function MapView({ user }: MapViewProps) {
     return () => { window.removeEventListener("map:prefs-change", onPrefs as any); };
   }, []);
 
-  // Persist last_view on interactions (debounced local cache, throttled network)
+  // Persist last_view on interactions (debounced local cache only)
   useEffect(() => {
     if (!map.current) return;
     const m = map.current;
@@ -603,19 +671,6 @@ export default function MapView({ user }: MapViewProps) {
         const last = { center: m.getCenter().toArray() as [number, number], zoom: m.getZoom(), pitch: m.getPitch(), bearing: m.getBearing() };
         // Write cache immediately
         try { localStorage.setItem("map:last_view", JSON.stringify(last)); } catch {}
-        // Throttle Supabase writes to at most every 5s
-        const now = Date.now();
-        if (now - lastSupabaseWriteAt.current >= 5000) {
-          lastSupabaseWriteAt.current = now;
-          try {
-            const supabase = supabaseBrowser();
-            const { data: { session } } = await supabase.auth.getSession();
-            const userId = session?.user?.id;
-            if (userId) {
-              await supabase.from("user_settings").upsert({ user_id: userId, map: { last_view: last } } as any, { onConflict: "user_id" } as any);
-            }
-          } catch {}
-        }
       }, 800) as unknown as number;
     };
     m.on("moveend", handler);
@@ -652,21 +707,9 @@ export default function MapView({ user }: MapViewProps) {
         <select
           className="text-sm border rounded px-2 py-1 bg-white pointer-events-auto"
           value={styleKey}
-          onChange={async (e) => {
+          onChange={(e) => {
             const nextKey = e.target.value as StyleKey;
-            if (nextKey === styleKey) return;
-            setStyleKey(nextKey);
-            const nextUrl = styleUrlFor(nextKey);
-            setStyleUrl(nextUrl);
-            try { localStorage.setItem("map:style_key", nextKey); } catch {}
-            try {
-              const supabase = supabaseBrowser();
-              const { data: { session } } = await supabase.auth.getSession();
-              const userId = session?.user?.id;
-              if (userId) {
-                await supabase.from("user_settings").upsert({ user_id: userId, map: { style_key: nextKey } } as any, { onConflict: "user_id" } as any);
-              }
-            } catch {}
+            applyStyleKey(nextKey);
             try { window.dispatchEvent(new CustomEvent("map:style-change", { detail: { style_key: nextKey } })); } catch {}
           }}
         >
@@ -704,6 +747,7 @@ export default function MapView({ user }: MapViewProps) {
       </div>
 
       <div ref={mapContainer} className="h-[calc(100vh-64px)] w-full" />
+      <MapVignetteOverlay />
 
       {isLoading && (
         <div className="absolute inset-0 flex items-center justify-center">

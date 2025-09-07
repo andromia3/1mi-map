@@ -1,46 +1,23 @@
 import type mapboxgl from "mapbox-gl";
-import type { MapStyleConfig, ZoomRamp, StyleKey } from "./mapTheme";
+import type { MapStyleConfig } from "./theme";
+import { safeAddLayer, safeLayout, safePaint } from "./mapboxHelpers";
 
-const safeLayer = (map: mapboxgl.Map, id: string | null) => Boolean(id && map.getLayer(id));
-const safePaint = (map: mapboxgl.Map, id: string | null, prop: string, val: any) => {
-  try { if (safeLayer(map, id)) map.setPaintProperty(id as string, prop, val as any); } catch {}
-};
-const safeLayout = (map: mapboxgl.Map, id: string | null, prop: string, val: any) => {
-  try { if (safeLayer(map, id)) map.setLayoutProperty(id as string, prop, val as any); } catch {}
-};
-const safeAddLayer = (map: mapboxgl.Map, def: any, beforeId?: string | null) => {
-  try { if (!map.getLayer(def?.id)) map.addLayer(def, beforeId || undefined); } catch (e) { if (process.env.NODE_ENV !== 'production') { console.warn('safeAddLayer warn', e); } }
-};
-
-const ramp = (r: ZoomRamp, property: string) => {
+type ZoomRamp = { [zoom: string]: number };
+const ramp = (r: ZoomRamp) => {
   const stops = Object.entries(r)
     .map(([k, v]) => [Number(k), v] as [number, number])
     .sort((a, b) => a[0] - b[0]);
   return ["interpolate", ["linear"], ["zoom"], ...stops.flat()] as any;
 };
 
-export function configureVisualTheme(map: mapboxgl.Map, cfg: MapStyleConfig, opts?: { styleKey?: StyleKey; isSatellite?: boolean; staged?: boolean }) {
-  if (!map || !map.isStyleLoaded?.()) {
-    // Defer until style is ready; caller should handle retry on style.load
-  }
-  // Helper blocks
-  const isSatellite = (opts?.isSatellite != null) ? Boolean(opts.isSatellite) : (opts?.styleKey === 'satellite');
+export function configureVisualTheme(map: mapboxgl.Map, cfg: MapStyleConfig, opts?: { isSatellite?: boolean }) {
+  if (!map || !map.isStyleLoaded?.()) { return; }
+  const isSatellite = Boolean(opts?.isSatellite);
   const applyCameraFog = () => {
-    try {
-      map.jumpTo({
-        center: cfg.camera.center as any,
-        zoom: cfg.camera.zoom,
-        pitch: cfg.camera.pitch,
-        bearing: cfg.camera.bearing,
-      });
-    } catch {}
     try {
       map.setFog({
         range: cfg.fog.range,
         "horizon-blend": cfg.fog.horizonBlend,
-        color: "#fff",
-        "high-color": "#fff",
-        "space-color": "#fff",
       } as any);
     } catch {}
   };
@@ -48,31 +25,36 @@ export function configureVisualTheme(map: mapboxgl.Map, cfg: MapStyleConfig, opt
     // Labels and halos (lightweight, first)
     safePaint(map, "place-label", "text-halo-color", cfg.palette.labelHalo);
     safePaint(map, "place-label", "text-halo-width", cfg.labels.haloWidth);
-    safePaint(map, "poi-label", "text-size", ramp(cfg.labels.poiTextSize, "text-size"));
+    safePaint(map, "poi-label", "text-size", ramp(cfg.labels.poiTextSize));
     // Transit visibility can go early
     safeLayout(map, "transit-line", "minzoom", cfg.transit.minZoom as any);
-    safePaint(map, "transit-line", "line-opacity", ramp(cfg.transit.lineOpacity, "line-opacity"));
+    safePaint(map, "transit-line", "line-opacity", ramp(cfg.transit.lineOpacity));
+    // Waterway labels: halo and spacing for legibility
+    safePaint(map, "waterway-label", "text-halo-color", cfg.palette.labelHalo);
+    safePaint(map, "waterway-label", "text-halo-width", 1.2 as any);
+    safeLayout(map, "waterway-label", "text-letter-spacing", 0.1 as any);
   };
   const applyBuildings = () => {
     try {
       const hasSource = !!map.getSource("composite");
-      const layers = (map.getStyle() as any).layers || [];
-      const labelLayerId = layers.find((l: any) => l.type === "symbol" && (l.layout || {})["text-field"])?.id;
-      if (hasSource && !map.getLayer("3d-buildings")) {
+      // place below first label layer
+      const layers = (map.getStyle() as any)?.layers || [];
+      const beforeId = layers.find((l: any) => l.type === 'symbol' && (l.layout || {})['text-field'])?.id;
+      if (hasSource && !map.getLayer("ly-3d-buildings")) {
         safeAddLayer(map, {
-          id: "3d-buildings",
+          id: "ly-3d-buildings",
           source: "composite",
           "source-layer": "building",
-          filter: ["==", ["get", "extrude"], "true"],
           type: "fill-extrusion",
           minzoom: cfg.buildings3d.minZoom,
           paint: {
-            "fill-extrusion-color": cfg.palette.building,
             "fill-extrusion-opacity": cfg.buildings3d.opacity,
             "fill-extrusion-height": ["coalesce", ["get", "height"], cfg.buildings3d.minHeight],
             "fill-extrusion-base": ["coalesce", ["get", "min_height"], 0],
+            "fill-extrusion-vertical-gradient": true,
+            "fill-extrusion-color": ["interpolate", ["linear"], ["coalesce", ["get", "height"], 6], 0, "#D8D8C8", 100, "#C8C8C8", 200, "#BEBEBE"],
           },
-        } as any, labelLayerId);
+        } as any, beforeId);
       }
     } catch {}
   };
@@ -85,19 +67,19 @@ export function configureVisualTheme(map: mapboxgl.Map, cfg: MapStyleConfig, opt
       // Parks
       safePaint(map, "park", "fill-color", cfg.palette.park);
       safePaint(map, "park", "fill-opacity", cfg.parks.opacity);
-      if (safeLayer(map, "park")) {
+      try {
         try {
           safeLayout(map, "park", "visibility", "visible");
           safeLayout(map, "park", "minzoom", cfg.parks.minZoom as any);
         } catch {}
-      }
+      } catch {}
       // Roads
-      safePaint(map, "road-motorway", "line-width", ramp(cfg.roads.motorwayWidth, "line-width"));
-      safePaint(map, "road-primary", "line-width", ramp(cfg.roads.primaryWidth, "line-width"));
-      safePaint(map, "road-secondary", "line-width", ramp(cfg.roads.secondaryWidth, "line-width"));
-      safePaint(map, "road-street", "line-opacity", ramp(cfg.roads.residentialOpacity, "line-opacity"));
+      safePaint(map, "road-motorway", "line-width", ramp(cfg.roads.motorwayWidth));
+      safePaint(map, "road-primary", "line-width", ramp(cfg.roads.primaryWidth));
+      safePaint(map, "road-secondary", "line-width", ramp(cfg.roads.secondaryWidth));
+      safePaint(map, "road-street", "line-opacity", ramp(cfg.roads.residentialOpacity));
       // Casings
-      const isNight = opts?.styleKey === 'night';
+      const isNight = false;
       const casingColor = isNight ? "#ffffff" : "#0f172a";
       const casingOpacity = 0.28;
       const extraWidth = 1;
@@ -131,28 +113,17 @@ export function configureVisualTheme(map: mapboxgl.Map, cfg: MapStyleConfig, opt
     }
   };
 
-  if (opts?.staged) {
-    applyCameraFog();
-    // Stage 1: labels/halos/transit
+  // Staged apply to reduce blocking
+  applyCameraFog();
+  requestAnimationFrame(() => {
+    applyLabels();
     requestAnimationFrame(() => {
-      applyLabels();
-      // Stage 2: buildings
+      applyBuildings();
       requestAnimationFrame(() => {
-        applyBuildings();
-        // Stage 3: palette/parks/roads
-        requestAnimationFrame(() => {
-          applyPaletteParksRoads();
-        });
+        applyPaletteParksRoads();
       });
     });
-    return;
-  }
-
-  // Non-staged path (legacy)
-  applyCameraFog();
-  applyLabels();
-  applyBuildings();
-  applyPaletteParksRoads();
+  });
 }
 
 export { safePaint, safeLayout, safeAddLayer };
