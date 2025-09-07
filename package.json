@@ -12,7 +12,13 @@
     "lint": "next lint",
     "verify-clean": "node scripts/verify-clean.js",
     "test:e2e": "playwright test",
-    "test:unit": "vitest run"
+    "test:unit": "vitest run",
+    "db:link": "npx supabase link",
+    "db:pull": "npx supabase db pull --schema public --file supabase/schema.sql",
+    "db:new": "npx supabase migration new",
+    "db:diff": "npx supabase db diff -f auto",
+    "db:migrate:local": "npx supabase db reset",
+    "db:types": "npx supabase gen types typescript --linked --schema public > src/types/supabase.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.3.2",

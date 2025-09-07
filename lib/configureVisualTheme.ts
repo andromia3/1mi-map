@@ -29,6 +29,15 @@ export function configureVisualTheme(map: mapboxgl.Map, cfg: MapStyleConfig, opt
     // Hide default Mapbox POI blue icons to keep map minimal
     safePaint(map, "poi-label", "icon-opacity", 0 as any);
     safeLayout(map, "poi", "visibility", "none" as any);
+    // Hide any remaining symbol icons with icon-image set
+    try {
+      const layers = (map.getStyle() as any)?.layers || [];
+      for (const l of layers) {
+        if (l?.type === 'symbol' && (l.layout || {})['icon-image']) {
+          try { map.setPaintProperty(l.id, 'icon-opacity', 0 as any); } catch {}
+        }
+      }
+    } catch {}
     // Transit visibility can go early
     safeLayout(map, "transit-line", "minzoom", cfg.transit.minZoom as any);
     safePaint(map, "transit-line", "line-opacity", ramp(cfg.transit.lineOpacity));

@@ -131,7 +131,7 @@ export default function MapView({ user }: MapViewProps) {
         dragRotate: true,
         pitchWithRotate: true,
         attributionControl: false,
-        cooperativeGestures: true,
+        cooperativeGestures: false,
       });
       map.current.addControl(new mapboxgl.NavigationControl({ showCompass: true, visualizePitch: true } as any), "top-left");
       map.current.addControl(new mapboxgl.ScaleControl({ unit: "metric" }), "bottom-left");
@@ -146,12 +146,7 @@ export default function MapView({ user }: MapViewProps) {
         (map.current as any)._resizeObserver = ro;
       } catch {}
 
-      // Set sensible bounds and zoom limits around Greater London
-      try {
-        map.current.setMaxBounds([[-0.6, 51.2], [0.4, 51.75]] as any);
-        map.current.setMinZoom(8);
-        map.current.setMaxZoom(20);
-      } catch {}
+      // Interaction: no artificial bounds/limits to keep free 3D pan/zoom/tilt
 
       // Show a pin for the user's location and keep it updated
       try {
