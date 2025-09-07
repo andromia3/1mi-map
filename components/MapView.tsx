@@ -64,6 +64,10 @@ export default function MapView({ user }: MapViewProps) {
     mapboxgl.accessToken = token
 
     try {
+      // Validate container dimensions before init
+      const { clientWidth, clientHeight } = mapContainer.current
+      console.log("[map] container size before init", { clientWidth, clientHeight })
+
       map.current = new mapboxgl.Map({
         container: mapContainer.current,
         style: "mapbox://styles/mapbox/light-v11",
@@ -94,13 +98,14 @@ export default function MapView({ user }: MapViewProps) {
     }, 4000)
 
     map.current.on("load", () => {
+      console.log("[map] event:load fired, styleLoaded=", map.current?.isStyleLoaded?.())
       setIsLoading(false)
       window.clearTimeout(timeoutId)
       window.clearTimeout(quickId)
     })
 
     map.current.on("error", (e) => {
-      console.error("Mapbox error", e)
+      console.error("[map] event:error", e)
       setError("Failed to load map. Check Mapbox token and network.")
       setIsLoading(false)
       window.clearTimeout(timeoutId)
@@ -312,21 +317,19 @@ export default function MapView({ user }: MapViewProps) {
     setError("")
   }
 
-  if (isLoading) {
-    return (
-      <div className="h-screen flex items-center justify-center bg-gray-100">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
-          <p className="mt-2 text-gray-600">Loading map...</p>
-          {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="relative h-screen">
       <div ref={mapContainer} className="h-[calc(100vh-64px)] w-full" />
+
+      {isLoading && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="text-center bg-white/70 rounded-md p-3 shadow">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
+            <p className="mt-2 text-gray-600">Loading map...</p>
+            {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
+          </div>
+        </div>
+      )}
       
       {/* Nearby Places Control */}
       <div className="absolute top-4 right-4 z-30">
