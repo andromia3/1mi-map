@@ -1,39 +1,49 @@
-"use client"
+"use client";
 
-import { useEffect, useRef, useState } from "react"
-import mapboxgl from "mapbox-gl"
-import "mapbox-gl/dist/mapbox-gl.css"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { useForm } from "react-hook-form"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { z } from "zod"
-import { X } from "lucide-react"
-import { type NormalizedUser, type NormalizedPlace } from "@/lib/types"
+import { useEffect, useRef, useState } from "react";
+import mapboxgl from "mapbox-gl";
+import "mapbox-gl/dist/mapbox-gl.css";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { X } from "lucide-react";
+import { supabaseBrowser } from "@/lib/supabase/browser";
 
 const addPlaceSchema = z.object({
   title: z.string().min(1, "Title is required"),
   description: z.string().optional(),
-})
+});
 
-type AddPlaceFormData = z.infer<typeof addPlaceSchema>
+type AddPlaceFormData = z.infer<typeof addPlaceSchema>;
+
+interface Place {
+  id: string;
+  title: string;
+  description?: string;
+  lat: number;
+  lng: number;
+  created_by: string;
+  created_at: string;
+}
 
 interface MapViewProps {
-  user: { id: string; username: string; displayName?: string | null }
+  user: { id: string; email: string; user_metadata?: { display_name?: string } };
 }
 
 export default function MapView({ user }: MapViewProps) {
-  const mapContainer = useRef<HTMLDivElement>(null)
-  const map = useRef<mapboxgl.Map | null>(null)
-  const [places, setPlaces] = useState<NormalizedPlace[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [showAddPlace, setShowAddPlace] = useState(false)
-  const [clickedLngLat, setClickedLngLat] = useState<[number, number] | null>(null)
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [error, setError] = useState("")
+  const mapContainer = useRef<HTMLDivElement>(null);
+  const map = useRef<mapboxgl.Map | null>(null);
+  const [places, setPlaces] = useState<Place[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [showAddPlace, setShowAddPlace] = useState(false);
+  const [clickedLngLat, setClickedLngLat] = useState<[number, number] | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState("");
 
   const {
     register,
@@ -78,18 +88,24 @@ export default function MapView({ user }: MapViewProps) {
   useEffect(() => {
     const loadPlaces = async () => {
       try {
-        const response = await fetch("/api/places")
-        if (response.ok) {
-          const placesData = await response.json()
-          setPlaces(placesData)
+        const supabase = supabaseBrowser();
+        const { data: places, error } = await supabase
+          .from("places")
+          .select("*")
+          .order("created_at", { ascending: false });
+        
+        if (error) {
+          console.error("Failed to load places:", error);
+        } else {
+          setPlaces(places || []);
         }
       } catch (err) {
-        console.error("Failed to load places:", err)
+        console.error("Failed to load places:", err);
       }
-    }
+    };
 
-    loadPlaces()
-  }, [])
+    loadPlaces();
+  }, []);
 
   // Add markers to map
   useEffect(() => {
@@ -114,7 +130,7 @@ export default function MapView({ user }: MapViewProps) {
         <div class="p-2">
           <h3 class="font-semibold text-sm">${place.title}</h3>
           ${place.description ? `<p class="text-xs text-gray-600 mt-1">${place.description}</p>` : ""}
-          <p class="text-xs text-gray-500 mt-2">Added by ${place.createdBy.displayName || place.createdBy.username}</p>
+          <p class="text-xs text-gray-500 mt-2">Added by ${user.user_metadata?.display_name || user.email}</p>
         </div>
       `)
 
@@ -126,40 +142,46 @@ export default function MapView({ user }: MapViewProps) {
   }, [places])
 
   const onSubmitPlace = async (data: AddPlaceFormData) => {
-    if (!clickedLngLat) return
+    if (!clickedLngLat) return;
 
-    setIsSubmitting(true)
-    setError("")
+    setIsSubmitting(true);
+    setError("");
 
     try {
-      const response = await fetch("/api/places", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          ...data,
+      const supabase = supabaseBrowser();
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        setError("You must be logged in to add places");
+        return;
+      }
+
+      const { data: newPlace, error } = await supabase
+        .from("places")
+        .insert({
+          title: data.title,
+          description: data.description,
           lat: clickedLngLat[1],
           lng: clickedLngLat[0],
-        }),
-      })
+          created_by: session.user.id,
+        })
+        .select()
+        .single();
 
-      if (response.ok) {
-        const newPlace = await response.json()
-        setPlaces(prev => [newPlace, ...prev])
-        setShowAddPlace(false)
-        setClickedLngLat(null)
-        reset()
+      if (error) {
+        setError(error.message);
       } else {
-        const errorData = await response.json()
-        setError(errorData.error || "Failed to add place")
+        setPlaces(prev => [newPlace, ...prev]);
+        setShowAddPlace(false);
+        setClickedLngLat(null);
+        reset();
       }
     } catch (err) {
-      setError("Network error. Please try again.")
+      setError("Network error. Please try again.");
     } finally {
-      setIsSubmitting(false)
+      setIsSubmitting(false);
     }
-  }
+  };
 
   const handleCloseAddPlace = () => {
     setShowAddPlace(false)

@@ -1,13 +1,10 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
-import { useForm } from "react-hook-form"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { z } from "zod"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
+import { useState } from "react";
+import { supabaseBrowser } from "@/lib/supabase/browser";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -16,75 +13,51 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog"
-
-const changePasswordSchema = z.object({
-  currentPassword: z.string().min(1, "Current password is required"),
-  newPassword: z.string().min(6, "New password must be at least 6 characters"),
-})
-
-type ChangePasswordFormData = z.infer<typeof changePasswordSchema>
+} from "@/components/ui/dialog";
 
 interface TopbarProps {
-  displayName: string | null
+  displayName: string | null;
 }
 
 export default function Topbar({ displayName }: TopbarProps) {
-  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState("")
-  const [success, setSuccess] = useState("")
-  const router = useRouter()
-
-  const {
-    register,
-    handleSubmit,
-    reset,
-    formState: { errors },
-  } = useForm<ChangePasswordFormData>({
-    resolver: zodResolver(changePasswordSchema),
-  })
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [newPassword, setNewPassword] = useState("");
 
   const handleLogout = async () => {
-    try {
-      await fetch("/api/logout", { method: "POST" })
-      router.push("/login")
-    } catch (err) {
-      console.error("Logout error:", err)
-    }
-  }
+    const supabase = supabaseBrowser();
+    await supabase.auth.signOut();
+    window.location.href = "/login";
+  };
 
-  const onSubmitPasswordChange = async (data: ChangePasswordFormData) => {
-    setIsLoading(true)
-    setError("")
-    setSuccess("")
+  const onSubmitPasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setError("");
+    setSuccess("");
 
     try {
-      const response = await fetch("/api/change-password", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(data),
-      })
-
-      if (response.ok) {
-        setSuccess("Password changed successfully!")
-        reset()
-        setTimeout(() => {
-          setIsChangePasswordOpen(false)
-          setSuccess("")
-        }, 2000)
+      const supabase = supabaseBrowser();
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      
+      if (error) {
+        setError(error.message);
       } else {
-        const errorData = await response.json()
-        setError(errorData.error || "Failed to change password")
+        setSuccess("Password changed successfully!");
+        setNewPassword("");
+        setTimeout(() => {
+          setIsChangePasswordOpen(false);
+          setSuccess("");
+        }, 2000);
       }
     } catch (err) {
-      setError("Network error. Please try again.")
+      setError("Network error. Please try again.");
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   return (
     <div className="fixed top-0 right-0 z-50 p-4">
@@ -103,34 +76,21 @@ export default function Topbar({ displayName }: TopbarProps) {
             <DialogHeader>
               <DialogTitle>Change Password</DialogTitle>
               <DialogDescription>
-                Enter your current password and choose a new one.
+                Choose a new password for your account.
               </DialogDescription>
             </DialogHeader>
-            <form onSubmit={handleSubmit(onSubmitPasswordChange)} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="currentPassword">Current Password</Label>
-                <Input
-                  id="currentPassword"
-                  type="password"
-                  {...register("currentPassword")}
-                  disabled={isLoading}
-                />
-                {errors.currentPassword && (
-                  <p className="text-sm text-red-600">{errors.currentPassword.message}</p>
-                )}
-              </div>
-
+            <form onSubmit={onSubmitPasswordChange} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="newPassword">New Password</Label>
                 <Input
                   id="newPassword"
                   type="password"
-                  {...register("newPassword")}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
                   disabled={isLoading}
+                  required
+                  minLength={6}
                 />
-                {errors.newPassword && (
-                  <p className="text-sm text-red-600">{errors.newPassword.message}</p>
-                )}
               </div>
 
               {error && (
@@ -150,10 +110,10 @@ export default function Topbar({ displayName }: TopbarProps) {
                   type="button"
                   variant="outline"
                   onClick={() => {
-                    setIsChangePasswordOpen(false)
-                    reset()
-                    setError("")
-                    setSuccess("")
+                    setIsChangePasswordOpen(false);
+                    setNewPassword("");
+                    setError("");
+                    setSuccess("");
                   }}
                   disabled={isLoading}
                 >

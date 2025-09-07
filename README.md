@@ -1,31 +1,25 @@
 # 1MI Members' Club
 
-A premium Next.js 14 application for the 1MI Members' Club featuring a beautiful Mapbox-powered map where members can discover and share nice places in London.
+A beautiful, premium Next.js 14 application for the 1MI Members' Club featuring an interactive Mapbox map where members can share and discover nice places around London.
 
 ## Features
 
-- 🔐 **Secure Authentication** - Cookie-based login with iron-session
-- 🗺️ **Interactive Map** - Beautiful Mapbox map centered on London
-- 📍 **Place Sharing** - Members can add and discover nice places
-- 🎨 **Premium UI** - Clean, modern design with shadcn/ui components
-- 🔒 **Password Management** - Users can change their passwords
-- 📱 **Responsive Design** - Works perfectly on all devices
+- **Modern Authentication**: Secure email/password login with Supabase Auth
+- **Interactive Map**: Full-screen Mapbox map centered on London
+- **Place Sharing**: Members can add pins with titles and descriptions
+- **Premium UI**: Clean, minimalist design inspired by Notion/Linear
+- **Real-time Updates**: Places are shared across all members
+- **Responsive Design**: Works perfectly on desktop and mobile
 
 ## Tech Stack
 
-- **Framework**: Next.js 14 (App Router, TypeScript)
-- **Styling**: Tailwind CSS + shadcn/ui
-- **Maps**: Mapbox GL JS
-- **Database**: PostgreSQL with Prisma ORM
-- **Authentication**: iron-session (cookie-based)
-- **Validation**: Zod + React Hook Form
-- **Deployment**: Netlify
-
-## Prerequisites
-
-- Node.js 18+ 
-- PostgreSQL database (we recommend [Neon](https://neon.tech/))
-- Mapbox account and API token
+- **Frontend**: Next.js 14 (App Router), TypeScript, Tailwind CSS
+- **UI Components**: shadcn/ui for premium look and feel
+- **Maps**: Mapbox GL JS with custom styling
+- **Database**: Supabase (PostgreSQL) with Row Level Security
+- **Authentication**: Supabase Auth with JWT tokens
+- **Deployment**: Netlify with serverless functions
+- **Styling**: Tailwind CSS with custom components
 
 ## Quick Start
 
@@ -37,182 +31,121 @@ cd 1mi-members-club
 npm install
 ```
 
-### 2. Database Setup
+### 2. Supabase Setup
 
-1. Create a PostgreSQL database (we use [Supabase](https://supabase.com/))
-2. Get your connection string from your database provider
-3. **For Supabase**: Reset your database password and update the DATABASE_URL
+1. Create a new project on [Supabase](https://supabase.com)
+2. Go to Settings → API to get your project URL and anon key
+3. Create the `places` table in the SQL editor:
 
-**Supabase Password Reset:**
-1. Go to your Supabase project dashboard
-2. Navigate to Settings → Database
-3. Click "Reset database password"
-4. Copy the new password and URL-encode special characters
-5. Update your DATABASE_URL with the new password
+```sql
+-- Create places table
+CREATE TABLE public.places (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  title TEXT NOT NULL,
+  description TEXT,
+  lat DOUBLE PRECISION NOT NULL,
+  lng DOUBLE PRECISION NOT NULL,
+  created_by UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Enable Row Level Security
+ALTER TABLE public.places ENABLE ROW LEVEL SECURITY;
+
+-- Create policies
+CREATE POLICY "Users can view all places" ON public.places
+  FOR SELECT USING (true);
+
+CREATE POLICY "Users can insert their own places" ON public.places
+  FOR INSERT WITH CHECK (auth.uid() = created_by);
+
+CREATE POLICY "Users can update their own places" ON public.places
+  FOR UPDATE USING (auth.uid() = created_by);
+
+CREATE POLICY "Users can delete their own places" ON public.places
+  FOR DELETE USING (auth.uid() = created_by);
+```
 
 ### 3. Environment Variables
 
 Create a `.env.local` file in the root directory:
 
 ```env
-DATABASE_URL="postgresql://postgres.fleomqtjdvdkhojqkvax:<password>@aws-1-eu-west-2.pooler.supabase.com:6543/postgres?pgbouncer=true&sslmode=require"
+NEXT_PUBLIC_SUPABASE_URL="https://your-project.supabase.co"
+NEXT_PUBLIC_SUPABASE_ANON_KEY="your-anon-key"
 MAPBOX_TOKEN="pk.your_mapbox_token_here"
 NEXT_PUBLIC_MAPBOX_TOKEN="pk.your_mapbox_token_here"
-SESSION_PASSWORD="your-super-secret-session-password-at-least-32-characters-long"
 ```
-
-**Connection Types**:
-- **Runtime** (`.env.local`): Use Transaction Pooler (port 6543, user `postgres.<project_ref>`)
-- **Prisma CLI** (`.env`): Use Direct connection (port 5432, user `postgres`)
-
-**Important**: Prisma CLI uses `.env` (not `.env.local`). For local seeding on Windows:
-```powershell
-Copy-Item .env.local .env
-# Then edit .env to use Direct connection (port 5432, user "postgres")
-```
-
-See [SEEDING.md](./SEEDING.md) for detailed connection setup.
 
 **Important**: 
+- Get your Supabase URL and anon key from your project settings
 - Get your Mapbox token from [mapbox.com](https://mapbox.com)
-- Generate a strong session password (32+ characters)
 - Use the same token for both `MAPBOX_TOKEN` and `NEXT_PUBLIC_MAPBOX_TOKEN`
 
-### 4. Database Migration & Seeding
-
-**First-time setup sequence:**
-
-**Option 1: Automated Setup (Recommended)**
-```powershell
-# Run the setup script (creates .env, pushes schema, seeds database)
-.\setup-db.ps1
-```
-
-**Option 2: Manual Setup**
-```bash
-# 1. Create .env file with Direct connection for Prisma CLI
-echo 'DATABASE_URL="postgresql://postgres:p3V9tQG2rJ6xN1yW8kZ5cH4mB7uR3qT@aws-1-eu-west-2.pooler.supabase.com:5432/postgres?sslmode=require"' > .env
-
-# 2. Deploy database schema
-npx prisma db push
-
-# 3. Seed the database with demo users
-npx prisma db seed
-
-# 4. Test database connection
-# Visit /api/dbtest - should return {"ok": true, "rows": [...]}
-```
-
-**Alternative commands:**
-```bash
-# Push schema (for development)
-npx prisma db push
-
-# Seed using npm script
-npm run db:seed
-```
-
-**Note**: Prisma seed is configured in `package.json` and uses `ts-node prisma/seed.ts` with CommonJS module system.
-
-### 5. Start Development Server
+### 4. Run Development Server
 
 ```bash
 npm run dev
 ```
 
-Visit [http://localhost:3000](http://localhost:3000) to see the app!
-
-## Demo Accounts
-
-The seed script creates these demo accounts:
-
-| Username | Password | Display Name |
-|----------|----------|--------------|
-| vincent  | changeme1 | Vincent      |
-| sergio   | changeme1 | Sergio       |
-| guest    | changeme1 | Guest        |
+Visit [http://localhost:3000](http://localhost:3000) and sign up for a new account or sign in.
 
 ## Project Structure
 
 ```
-├── app/                    # Next.js App Router
-│   ├── api/               # API routes
-│   │   ├── login/         # Authentication
-│   │   ├── logout/        # Logout
-│   │   ├── change-password/ # Password management
-│   │   └── places/        # Places CRUD
+├── app/                    # Next.js 14 App Router
 │   ├── login/             # Login page
-│   ├── map/               # Map page
-│   └── globals.css        # Global styles
+│   ├── map/               # Map page (protected)
+│   └── layout.tsx         # Root layout
 ├── components/            # React components
 │   ├── ui/               # shadcn/ui components
 │   ├── LoginForm.tsx     # Login form
-│   ├── MapView.tsx       # Map component
+│   ├── MapView.tsx       # Mapbox map component
 │   └── Topbar.tsx        # Navigation bar
 ├── lib/                  # Utilities
-│   ├── auth.ts          # Authentication helpers
-│   ├── prisma.ts        # Database client
-│   ├── session.ts       # Session management
-│   └── utils.ts         # Utility functions
-├── prisma/              # Database
-│   ├── schema.prisma    # Database schema
-│   └── seed.ts          # Seed script
-└── netlify.toml         # Netlify configuration
+│   ├── supabase/         # Supabase client helpers
+│   └── utils.ts          # Utility functions
+├── middleware.ts         # Route protection
+└── public/               # Static assets
 ```
 
-## API Endpoints
+## Authentication
 
-### Authentication
-- `POST /api/login` - User login
-- `POST /api/logout` - User logout
-- `POST /api/change-password` - Change user password
+The app uses Supabase Auth for secure authentication:
 
-### Places
-- `GET /api/places` - Get all places
-- `POST /api/places` - Create new place
-
-### Health & Diagnostics
-- `GET /api/health` - Basic database health check
-- `GET /api/dbtest` - Detailed database connection test
+- **Sign Up**: Users can create accounts with email/password
+- **Sign In**: Existing users can sign in with their credentials
+- **Protected Routes**: `/map` is protected by middleware
+- **Session Management**: JWT tokens handled automatically by Supabase
 
 ## Database Schema
 
-### User
-- `id` - Unique identifier
-- `username` - Unique username
-- `passwordHash` - Bcrypt hashed password
-- `displayName` - Optional display name
-- `createdAt` - Account creation date
-- `updatedAt` - Last update date
-
-### Place
-- `id` - Unique identifier
-- `title` - Place title
+### Places Table
+- `id` - UUID primary key
+- `title` - Place title (required)
 - `description` - Optional description
 - `lat` - Latitude coordinate
 - `lng` - Longitude coordinate
-- `createdById` - User who created the place
-- `createdAt` - Creation date
-- `updatedAt` - Last update date
+- `created_by` - User ID who added the place
+- `created_at` - Creation timestamp
+
+### Row Level Security (RLS)
+- Users can view all places
+- Users can only create, update, and delete their own places
+- All operations require authentication
 
 ## Deployment
 
-### Netlify Deployment
+### Netlify
 
-1. Connect your GitHub repository to Netlify
-2. Set the build command: `npm run build`
-3. Set the publish directory: `.next`
-4. Add environment variables in Netlify dashboard
-5. Deploy!
+1. **Connect Repository**: Link your GitHub repo to Netlify
+2. **Environment Variables**: Set the following in Netlify dashboard:
+   - `NEXT_PUBLIC_SUPABASE_URL` - Your Supabase project URL
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Your Supabase anon key
+   - `MAPBOX_TOKEN` - Your Mapbox API token
+   - `NEXT_PUBLIC_MAPBOX_TOKEN` - Same as above
 
-### Environment Variables for Production
-
-Make sure to set these in your Netlify dashboard:
-
-- `DATABASE_URL` - Your production PostgreSQL URL
-- `MAPBOX_TOKEN` - Your Mapbox API token
-- `NEXT_PUBLIC_MAPBOX_TOKEN` - Same as above
-- `SESSION_PASSWORD` - Strong session password
+3. **Build Settings**: Netlify will auto-detect Next.js and use the included `netlify.toml`
 
 ## Development
 
@@ -223,90 +156,16 @@ npm run dev          # Start development server
 npm run build        # Build for production
 npm run start        # Start production server
 npm run lint         # Run ESLint
-npm run db:push      # Push schema changes
-npm run db:migrate   # Run migrations
-npm run db:seed      # Seed database
-npm run db:studio    # Open Prisma Studio
 ```
 
-### Database Management
+## Contributing
 
-```bash
-# Reset database (careful!)
-npx prisma db push --force-reset
-
-# View database in browser
-npx prisma studio
-
-# Generate Prisma client after schema changes
-npx prisma generate
-```
-
-## Customization
-
-### Adding New Features
-
-The app is designed to be extensible. To add new features:
-
-1. **Database**: Update `prisma/schema.prisma`
-2. **API**: Add new routes in `app/api/`
-3. **UI**: Create components in `components/`
-4. **Pages**: Add new pages in `app/`
-
-### Styling
-
-The app uses Tailwind CSS with a custom design system. Key files:
-
-- `tailwind.config.js` - Tailwind configuration
-- `app/globals.css` - Global styles and CSS variables
-- `components/ui/` - Reusable UI components
-
-### Map Customization
-
-The map is configured in `components/MapView.tsx`. You can:
-
-- Change the map style
-- Adjust the center location
-- Modify marker appearance
-- Add new map interactions
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Database Connection Error**
-   - Check your `DATABASE_URL` format
-   - Ensure your database is accessible
-   - Verify SSL mode settings
-
-2. **Map Not Loading**
-   - Verify your Mapbox token is correct
-   - Check browser console for errors
-   - Ensure `NEXT_PUBLIC_MAPBOX_TOKEN` is set
-
-3. **Authentication Issues**
-   - Check `SESSION_PASSWORD` is set
-   - Verify cookie settings
-   - Clear browser cookies and try again
-
-4. **Build Errors**
-   - Run `npm install` to ensure dependencies are installed
-   - Check TypeScript errors with `npm run lint`
-   - Verify all environment variables are set
-
-### Getting Help
-
-If you encounter issues:
-
-1. Check the browser console for errors
-2. Verify all environment variables are set correctly
-3. Ensure your database is accessible
-4. Check the Netlify build logs for deployment issues
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/amazing-feature`
+3. Commit your changes: `git commit -m 'Add amazing feature'`
+4. Push to the branch: `git push origin feature/amazing-feature`
+5. Open a Pull Request
 
 ## License
 
-This project is private and proprietary to 1MI Members' Club.
-
----
-
-Built with ❤️ for the 1MI Members' Club
+This project is private and proprietary to the 1MI Members' Club.

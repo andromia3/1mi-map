@@ -1,60 +1,38 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
-import { useForm } from "react-hook-form"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { z } from "zod"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-
-const loginSchema = z.object({
-  username: z.string().min(1, "Username is required"),
-  password: z.string().min(1, "Password is required"),
-})
-
-type LoginFormData = z.infer<typeof loginSchema>
+import { useState } from "react";
+import { supabaseBrowser } from "@/lib/supabase/browser";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function LoginForm() {
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState("")
-  const router = useRouter()
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const router = useRouter();
+  const params = useSearchParams();
+  const redirect = params.get("redirect") || "/map";
 
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<LoginFormData>({
-    resolver: zodResolver(loginSchema),
-  })
-
-  const onSubmit = async (data: LoginFormData) => {
-    setIsLoading(true)
-    setError("")
-
-    try {
-      const response = await fetch("/api/login", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(data),
-      })
-
-      if (response.ok) {
-        router.push("/map")
-      } else {
-        const errorData = await response.json()
-        setError(errorData.error || "Login failed")
-      }
-    } catch (err) {
-      setError("Network error. Please try again.")
-    } finally {
-      setIsLoading(false)
+  const onSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setIsLoading(true);
+    
+    const supabase = supabaseBrowser();
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    
+    if (error) {
+      setError(error.message);
+      setIsLoading(false);
+      return;
     }
-  }
+    
+    router.replace(redirect);
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
@@ -68,19 +46,18 @@ export default function LoginForm() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={onSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="username">Username</Label>
+              <Label htmlFor="email">Email</Label>
               <Input
-                id="username"
-                type="text"
-                placeholder="Enter your username"
-                {...register("username")}
+                id="email"
+                type="email"
+                placeholder="Enter your email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 disabled={isLoading}
+                required
               />
-              {errors.username && (
-                <p className="text-sm text-red-600">{errors.username.message}</p>
-              )}
             </div>
 
             <div className="space-y-2">
@@ -89,12 +66,11 @@ export default function LoginForm() {
                 id="password"
                 type="password"
                 placeholder="Enter your password"
-                {...register("password")}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
                 disabled={isLoading}
+                required
               />
-              {errors.password && (
-                <p className="text-sm text-red-600">{errors.password.message}</p>
-              )}
             </div>
 
             {error && (
@@ -109,12 +85,7 @@ export default function LoginForm() {
           </form>
 
           <div className="mt-6 text-sm text-gray-600">
-            <p className="text-center">Demo accounts:</p>
-            <div className="mt-2 space-y-1 text-xs">
-              <p>• vincent / changeme1</p>
-              <p>• sergio / changeme1</p>
-              <p>• guest / changeme1</p>
-            </div>
+            <p className="text-center">Sign in with your email and password</p>
           </div>
         </CardContent>
       </Card>

@@ -1,19 +1,20 @@
-import { redirect } from "next/navigation"
-import { getCurrentUser } from "@/lib/auth"
-import MapView from "@/components/MapView"
-import Topbar from "@/components/Topbar"
+import { redirect } from "next/navigation";
+import { supabaseServer } from "@/lib/supabase/server";
+import MapView from "@/components/MapView";
+import Topbar from "@/components/Topbar";
 
 export default async function MapPage() {
-  const user = await getCurrentUser()
+  const supabase = supabaseServer();
+  const { data: { session } } = await supabase.auth.getSession();
   
-  if (!user) {
-    redirect("/login")
+  if (!session) {
+    redirect("/login");
   }
 
   return (
     <>
-      <Topbar displayName={user.displayName ?? user.username} />
-      <MapView user={user} />
+      <Topbar displayName={session.user.user_metadata?.display_name || session.user.email} />
+      <MapView user={session.user} />
     </>
-  )
+  );
 }
