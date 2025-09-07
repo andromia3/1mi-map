@@ -180,7 +180,7 @@ export default function MapView({ user }: MapViewProps) {
         .setPopup(popup)
         .addTo(map.current!)
     })
-  }, [places])
+  }, [places, user])
 
   // Add nearby places markers (different color)
   useEffect(() => {
