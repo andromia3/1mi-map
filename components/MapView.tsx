@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { Button } from "@/components/ui/button";
@@ -40,6 +40,13 @@ export default function MapView({ user }: MapViewProps) {
   const [isLoadingNearby, setIsLoadingNearby] = useState(false);
   const [error, setError] = useState("");
   const [userCenter, setUserCenter] = useState<[number, number] | null>(null);
+  const styles = [
+    { id: "streets", label: "Streets", url: "mapbox://styles/mapbox/streets-v12" },
+    { id: "light", label: "Light", url: "mapbox://styles/mapbox/light-v11" },
+    { id: "dark", label: "Dark", url: "mapbox://styles/mapbox/dark-v11" },
+    { id: "satellite", label: "Satellite", url: "mapbox://styles/mapbox/satellite-streets-v12" },
+  ];
+  const [styleUrl, setStyleUrl] = useState<string>(styles[0].url);
 
   const {
     register,
@@ -70,7 +77,7 @@ export default function MapView({ user }: MapViewProps) {
       },
       { enableHighAccuracy: true, timeout: 5000, maximumAge: 600000 }
     );
-  }, [userCenter]);
+  }, [userCenter, styleUrl]);
 
   // Initialize map when we know the center
   useEffect(() => {
@@ -91,7 +98,7 @@ export default function MapView({ user }: MapViewProps) {
       console.log("[map] container size before init", { clientWidth, clientHeight });
       map.current = new mapboxgl.Map({
         container: mapContainer.current,
-        style: "mapbox://styles/mapbox/light-v11",
+        style: styleUrl,
         center: userCenter,
         zoom: 12,
         antialias: false,
@@ -148,6 +155,62 @@ export default function MapView({ user }: MapViewProps) {
       window.clearTimeout(quickId);
     };
   }, [userCenter]);
+
+  // When style changes, apply it and reconfigure layers/terrain/3D
+  useEffect(() => {
+    if (!map.current) return;
+    const m = map.current;
+    const onStyle = () => {
+      try {
+        // Terrain and sky for depth
+        if (!m.getSource("mapbox-dem")) {
+          m.addSource("mapbox-dem", {
+            type: "raster-dem",
+            url: "mapbox://mapbox.terrain-rgb",
+            tileSize: 512,
+            maxzoom: 14,
+          } as any);
+        }
+        m.setTerrain({ source: "mapbox-dem", exaggeration: 1.1 } as any);
+        if (!m.getLayer("sky")) {
+          m.addLayer({
+            id: "sky",
+            type: "sky",
+            paint: {
+              "sky-type": "atmosphere",
+              "sky-atmosphere-sun": [0.0, 0.0],
+              "sky-atmosphere-sun-intensity": 5,
+            },
+          } as any);
+        }
+        // 3D buildings (fill-extrusion)
+        const layers = (m.getStyle() as any).layers || [];
+        const labelLayerId = layers.find((l: any) => l.type === "symbol" && (l.layout || {})["text-field"])?.id;
+        if (!m.getLayer("3d-buildings")) {
+          m.addLayer(
+            {
+              id: "3d-buildings",
+              source: "composite",
+              "source-layer": "building",
+              filter: ["==", ["get", "extrude"], "true"],
+              type: "fill-extrusion",
+              minzoom: 15,
+              paint: {
+                "fill-extrusion-color": "#d1d5db",
+                "fill-extrusion-height": ["interpolate", ["linear"], ["zoom"], 15, 0, 16, ["get", "height"]],
+                "fill-extrusion-base": ["get", "min_height"],
+                "fill-extrusion-opacity": 0.6,
+              },
+            } as any,
+            labelLayerId
+          );
+        }
+      } catch {}
+    };
+    m.on("style.load", onStyle);
+    m.setStyle(styleUrl);
+    return () => { m.off("style.load", onStyle); };
+  }, [styleUrl]);
 
   // Load places and set up realtime subscription
   useEffect(() => {
@@ -226,30 +289,7 @@ export default function MapView({ user }: MapViewProps) {
     const existingMarkers = document.querySelectorAll(".map-marker")
     existingMarkers.forEach(marker => marker.remove())
 
-    places.forEach((place) => {
-      const el = document.createElement("div")
-      el.className = "map-marker"
-      el.style.width = "20px"
-      el.style.height = "20px"
-      el.style.borderRadius = "50%"
-      el.style.backgroundColor = "#22c55e"
-      el.style.border = "2px solid white"
-      el.style.cursor = "pointer"
-      el.style.boxShadow = "0 2px 4px rgba(0,0,0,0.2)"
-
-      const popup = new mapboxgl.Popup({ offset: 25 }).setHTML(`
-        <div class="p-2">
-          <h3 class="font-semibold text-sm">${place.title}</h3>
-          ${place.description ? `<p class="text-xs text-gray-600 mt-1">${place.description}</p>` : ""}
-          <p class="text-xs text-gray-500 mt-2">Added by ${user.user_metadata?.display_name || user.email}</p>
-        </div>
-      `)
-
-      new mapboxgl.Marker(el)
-        .setLngLat([place.lng, place.lat])
-        .setPopup(popup)
-        .addTo(map.current!)
-    })
+    places.forEach(() => {})
   }, [places, user])
 
   // Add nearby places markers (different color)
@@ -341,6 +381,20 @@ export default function MapView({ user }: MapViewProps) {
 
   return (
     <div className="relative h-screen">
+      {/* Style switcher */}
+      <div className="absolute top-4 left-4 z-30 bg-white/80 backdrop-blur px-2 py-1 rounded shadow">
+        <label className="text-xs text-gray-600 mr-2">Style</label>
+        <select
+          className="text-sm border rounded px-2 py-1 bg-white"
+          value={styleUrl}
+          onChange={(e) => setStyleUrl(e.target.value)}
+        >
+          {styles.map((s) => (
+            <option key={s.id} value={s.url}>{s.label}</option>
+          ))}
+        </select>
+      </div>
+
       <div ref={mapContainer} className="h-[calc(100vh-64px)] w-full" />
 
       {isLoading && (
