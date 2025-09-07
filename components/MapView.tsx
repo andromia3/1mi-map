@@ -22,6 +22,7 @@ const addPlaceSchema = z.object({
 
 type AddPlaceFormData = z.infer<typeof addPlaceSchema>;
 type Place = Database["public"]["Tables"]["places"]["Row"];
+type NearbyPlace = Database["public"]["Functions"]["nearby_places"]["Returns"][0];
 
 interface MapViewProps {
   user: { id: string; email: string; user_metadata?: { display_name?: string } };
@@ -31,10 +32,12 @@ export default function MapView({ user }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const [places, setPlaces] = useState<Place[]>([]);
+  const [nearbyPlaces, setNearbyPlaces] = useState<NearbyPlace[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showAddPlace, setShowAddPlace] = useState(false);
   const [clickedLngLat, setClickedLngLat] = useState<[number, number] | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoadingNearby, setIsLoadingNearby] = useState(false);
   const [error, setError] = useState("");
 
   const {
@@ -118,6 +121,33 @@ export default function MapView({ user }: MapViewProps) {
     };
   }, []);
 
+  // Helper function to load nearby places
+  const loadNearbyPlaces = async (lat: number, lng: number, radiusM: number = 2000) => {
+    setIsLoadingNearby(true);
+    setError("");
+    
+    try {
+      const supabase = supabaseBrowser();
+      const { data: nearby, error } = await supabase.rpc('nearby_places', {
+        p_lat: lat,
+        p_lng: lng,
+        p_radius_m: radiusM
+      });
+      
+      if (error) {
+        console.error("Failed to load nearby places:", error);
+        setError("Failed to load nearby places");
+      } else {
+        setNearbyPlaces(nearby || []);
+      }
+    } catch (err) {
+      console.error("Failed to load nearby places:", err);
+      setError("Failed to load nearby places");
+    } finally {
+      setIsLoadingNearby(false);
+    }
+  };
+
   // Add markers to map
   useEffect(() => {
     if (!map.current || places.length === 0) return
@@ -151,6 +181,44 @@ export default function MapView({ user }: MapViewProps) {
         .addTo(map.current!)
     })
   }, [places])
+
+  // Add nearby places markers (different color)
+  useEffect(() => {
+    if (!map.current || nearbyPlaces.length === 0) return
+
+    // Clear existing nearby markers
+    const existingNearbyMarkers = document.querySelectorAll(".nearby-marker")
+    existingNearbyMarkers.forEach(marker => marker.remove())
+
+    nearbyPlaces.forEach(place => {
+      const markerEl = document.createElement("div")
+      markerEl.className = "nearby-marker"
+      markerEl.style.cssText = `
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: #10b981;
+        border: 2px solid white;
+        cursor: pointer;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+      `
+
+      const popup = new mapboxgl.Popup({ offset: 25 })
+        .setHTML(`
+          <div class="p-2">
+            <h3 class="font-semibold text-sm">${place.title}</h3>
+            ${place.description ? `<p class="text-xs text-gray-600 mt-1">${place.description}</p>` : ''}
+            <p class="text-xs text-gray-500 mt-1">${Math.round(place.distance_m)}m away</p>
+            <p class="text-xs text-gray-500">Added by ${user.user_metadata?.display_name || user.email}</p>
+          </div>
+        `)
+
+      new mapboxgl.Marker(markerEl)
+        .setLngLat([place.lng, place.lat])
+        .setPopup(popup)
+        .addTo(map.current!)
+    })
+  }, [nearbyPlaces, user])
 
   const onSubmitPlace = async (data: AddPlaceFormData) => {
     if (!clickedLngLat) return;
@@ -215,6 +283,22 @@ export default function MapView({ user }: MapViewProps) {
   return (
     <div className="relative h-screen">
       <div ref={mapContainer} className="h-full w-full" />
+      
+      {/* Nearby Places Control */}
+      <div className="absolute top-4 right-4 z-30">
+        <Button
+          onClick={() => {
+            if (map.current) {
+              const center = map.current.getCenter();
+              loadNearbyPlaces(center.lat, center.lng, 2000);
+            }
+          }}
+          disabled={isLoadingNearby}
+          className="bg-green-600 hover:bg-green-700 text-white shadow-lg"
+        >
+          {isLoadingNearby ? "Loading..." : "Find Nearby (2km)"}
+        </Button>
+      </div>
       
       {showAddPlace && clickedLngLat && (
         <div className="fixed inset-0 bg-black/20 flex items-center justify-center p-4 z-40">

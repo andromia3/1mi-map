@@ -7,6 +7,8 @@ A premium Next.js 14 application for the 1MI Members' Club featuring an interact
 - **🔐 Secure Authentication** - Email/password login with Supabase Auth
 - **🗺️ Interactive Map** - Beautiful Mapbox map centered on London
 - **📍 Place Sharing** - Members can add and discover nice places
+- **🌍 PostGIS Integration** - Advanced spatial queries with nearby places functionality
+- **📏 Distance Calculations** - Find places within 2km with accurate distance measurements
 - **🎨 Premium UI** - Clean, modern design with shadcn/ui components
 - **🔒 Password Management** - Users can change their passwords
 - **📱 Responsive Design** - Works perfectly on all devices
@@ -45,21 +47,29 @@ npm install
 2. **Get your credentials** from Settings → API:
    - Project URL
    - Anon (public) key
-3. **Create the places table** in the Supabase SQL Editor:
+3. **Enable PostGIS extension** in your Supabase project:
+
+   Go to your Supabase project dashboard → Database → Extensions and enable the `postgis` extension.
+
+4. **Create the places table** in the Supabase SQL Editor:
 
    Go to your Supabase project dashboard → SQL Editor and run this SQL:
 
 ```sql
--- Create places table
+-- Create places table with PostGIS geography column
 CREATE TABLE public.places (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   title TEXT NOT NULL,
   description TEXT,
   lat DOUBLE PRECISION NOT NULL,
   lng DOUBLE PRECISION NOT NULL,
+  geom GEOGRAPHY(POINT, 4326) GENERATED ALWAYS AS (ST_SetSRID(ST_MakePoint(lng, lat), 4326)) STORED,
   created_by UUID REFERENCES auth.users(id) ON DELETE CASCADE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Create spatial index for better performance
+CREATE INDEX idx_places_geom ON public.places USING GIST (geom);
 
 -- Enable Row Level Security
 ALTER TABLE public.places ENABLE ROW LEVEL SECURITY;
@@ -76,9 +86,44 @@ CREATE POLICY "Users can update their own places" ON public.places
 
 CREATE POLICY "Users can delete their own places" ON public.places
   FOR DELETE USING (auth.uid() = created_by);
+
+-- Create RPC function for finding nearby places
+CREATE OR REPLACE FUNCTION nearby_places(
+  p_lat DOUBLE PRECISION,
+  p_lng DOUBLE PRECISION,
+  p_radius_m INTEGER DEFAULT 2000
+)
+RETURNS TABLE (
+  id UUID,
+  title TEXT,
+  description TEXT,
+  lat DOUBLE PRECISION,
+  lng DOUBLE PRECISION,
+  geom TEXT,
+  created_by UUID,
+  created_at TIMESTAMP WITH TIME ZONE,
+  distance_m DOUBLE PRECISION
+)
+LANGUAGE SQL
+SECURITY DEFINER
+AS $$
+  SELECT 
+    p.id,
+    p.title,
+    p.description,
+    p.lat,
+    p.lng,
+    ST_AsGeoJSON(p.geom) as geom,
+    p.created_by,
+    p.created_at,
+    ST_Distance(p.geom, ST_SetSRID(ST_MakePoint(p_lng, p_lat), 4326)::geography) as distance_m
+  FROM public.places p
+  WHERE ST_DWithin(p.geom, ST_SetSRID(ST_MakePoint(p_lng, p_lat), 4326)::geography, p_radius_m)
+  ORDER BY distance_m;
+$$;
 ```
 
-**Note**: This replaces the old Prisma migrations. Simply run this SQL once in your Supabase project.
+**Note**: This replaces the old Prisma migrations. Simply run this SQL once in your Supabase project. The `geom` column is automatically generated from `lat`/`lng` coordinates.
 
 ### 3. Mapbox Setup
 
