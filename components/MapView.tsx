@@ -101,7 +101,7 @@ export default function MapView({ user }: MapViewProps) {
       }
       window.clearTimeout(timeoutId)
     }
-  }, [])
+  }, [isLoading])
 
   // Load places and set up realtime subscription
   useEffect(() => {
