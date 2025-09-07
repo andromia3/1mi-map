@@ -5,7 +5,7 @@ import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { Button } from "@/components/ui/button";
 import { supabaseBrowser } from "@/lib/supabase/browser";
-import { DEFAULT_THEME, type MapStyleConfig, type StyleKey, STYLE_URLS } from "@/lib/theme";
+import { DEFAULT_THEME, NIGHT_THEME, type MapStyleConfig, type StyleKey, STYLE_URLS } from "@/lib/theme";
 import { configureVisualTheme } from "@/lib/configureVisualTheme";
 import type { Database } from "@/lib/supabase/types";
 import MapVignetteOverlay from "./MapVignetteOverlay";
@@ -126,12 +126,12 @@ export default function MapView({ user }: MapViewProps) {
         bearing: initBearing,
         antialias: true,
         preserveDrawingBuffer: true as any,
-        dragRotate: false,
-        pitchWithRotate: false,
+        dragRotate: true,
+        pitchWithRotate: true,
         attributionControl: false,
         cooperativeGestures: true,
       });
-      map.current.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-left");
+      map.current.addControl(new mapboxgl.NavigationControl({ showCompass: true, visualizePitch: true } as any), "top-left");
       map.current.addControl(new mapboxgl.ScaleControl({ unit: "metric" }), "bottom-left");
       map.current.addControl(new mapboxgl.AttributionControl({ compact: true }), "bottom-right");
 
@@ -158,6 +158,15 @@ export default function MapView({ user }: MapViewProps) {
         showUserHeading: true,
       });
       map.current.addControl(geolocate, "top-left");
+      // Enable rich interactions (rotate/pitch/scroll/keyboard/pan)
+      try {
+        map.current.dragRotate.enable();
+        map.current.touchZoomRotate.enable();
+        (map.current.touchZoomRotate as any)?.enableRotation?.();
+        map.current.scrollZoom.enable();
+        map.current.keyboard.enable();
+        map.current.dragPan.enable();
+      } catch {}
       geolocate.on("geolocate", (evt: any) => {
         try {
           const coords: [number, number] = [evt?.coords?.longitude, evt?.coords?.latitude];
@@ -187,7 +196,8 @@ export default function MapView({ user }: MapViewProps) {
       mc.resize();
       try { mc.easeTo({ duration: 0 }); } catch {}
       // Apply code-only theme and terrain
-      try { configureVisualTheme(mc, DEFAULT_THEME, { isSatellite: styleKey === "satellite" }); } catch (e) { console.warn("[map] theme apply failed", e); }
+      const themeCfg = styleKey === 'night' ? NIGHT_THEME : DEFAULT_THEME;
+      try { configureVisualTheme(mc, themeCfg, { isSatellite: styleKey === "satellite" }); } catch (e) { console.warn("[map] theme apply failed", e); }
       try {
         if (!mc.getSource("mapbox-dem")) {
           mc.addSource("mapbox-dem", { type: "raster-dem", url: "mapbox://mapbox.mapbox-terrain-dem-v1", tileSize: 512, maxzoom: 14 } as any);
@@ -362,7 +372,8 @@ export default function MapView({ user }: MapViewProps) {
         } catch {}
         // Re-apply theme after style reload
         try {
-          configureVisualTheme(m, DEFAULT_THEME, { isSatellite: styleKey === "satellite" });
+          const cfg = styleKey === 'night' ? NIGHT_THEME : DEFAULT_THEME;
+          configureVisualTheme(m, cfg, { isSatellite: styleKey === "satellite" });
         } catch {}
         // Collect themed layer matches for HUD (first 8 per category)
         try {

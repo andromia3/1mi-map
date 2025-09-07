@@ -14,6 +14,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import Link from "next/link";
 
 interface TopbarProps {
   displayName: string | null;
@@ -65,6 +66,11 @@ export default function Topbar({ displayName }: TopbarProps) {
         <span className="text-sm font-medium text-white bg-black/20 px-3 py-1 rounded-full backdrop-blur-sm">
           {displayName}
         </span>
+        <Link href="/settings/map" className="pointer-events-auto">
+          <Button variant="outline" size="sm" className="bg-white/90 hover:bg-white">
+            Settings
+          </Button>
+        </Link>
         
         <Dialog open={isChangePasswordOpen} onOpenChange={setIsChangePasswordOpen}>
           <DialogTrigger asChild>

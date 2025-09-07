@@ -3,6 +3,7 @@ import { Inter } from "next/font/google"
 import "./globals.css"
 import { ErrorBoundary } from "@/components/ErrorBoundary"
 import { Toaster } from "sonner"
+import "mapbox-gl/dist/mapbox-gl.css"
 
 const inter = Inter({ subsets: ["latin"] })
 
