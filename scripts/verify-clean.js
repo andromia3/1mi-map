@@ -9,14 +9,24 @@ console.log('🔍 Verifying clean Supabase-only deployment...\n');
 // Check for any remaining legacy auth API routes that must not exist
 const appDir = path.join(__dirname, '..', 'app');
 if (fs.existsSync(appDir)) {
-  const files = fs.readdirSync(appDir, { recursive: true });
-  const forbiddenApiFiles = files.filter(file => 
-    typeof file === 'string' && (
-      file.includes(`${path.sep}api${path.sep}login${path.sep}`) ||
-      file.includes(`${path.sep}api${path.sep}logout${path.sep}`) ||
-      file.includes(`${path.sep}api${path.sep}change-password${path.sep}`)
-    )
-  );
+  // Manual recursion to be robust across Node versions
+  /** @type {string[]} */
+  const files = [];
+  /** @param {string} dir */
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(dir)) {
+      const full = path.join(dir, entry);
+      const stat = fs.statSync(full);
+      if (stat.isDirectory()) walk(full);
+      else files.push(full);
+    }
+  };
+  walk(appDir);
+  const forbiddenApiFiles = files.filter(file => (
+    file.includes(`${path.sep}api${path.sep}login${path.sep}`) ||
+    file.includes(`${path.sep}api${path.sep}logout${path.sep}`) ||
+    file.includes(`${path.sep}api${path.sep}change-password${path.sep}`)
+  ));
   
   if (forbiddenApiFiles.length > 0) {
     console.error('❌ Found forbidden API files:', forbiddenApiFiles);
