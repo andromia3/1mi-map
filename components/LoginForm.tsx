@@ -23,15 +23,24 @@ export default function LoginForm() {
     setIsLoading(true);
     
     const supabase = supabaseBrowser();
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
     
     if (error) {
       setError(error.message);
       setIsLoading(false);
       return;
     }
-    
+    // Navigate to the requested page and refresh to ensure cookies are recognized
     router.replace(redirect);
+    router.refresh();
+
+    // Safety: if navigation doesn't occur quickly, stop the spinner
+    setTimeout(() => {
+      setIsLoading(false);
+      if (typeof window !== "undefined" && window.location.pathname.startsWith("/login")) {
+        window.location.href = redirect;
+      }
+    }, 500);
   };
 
   return (
