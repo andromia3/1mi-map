@@ -114,12 +114,12 @@ export default function MapView({ user }: MapViewProps) {
           .order("created_at", { ascending: false });
         
         if (error) {
-          console.error("Failed to load places:", error);
+          console.error("[map] Failed to load places:", error);
         } else {
           setPlaces(places || []);
         }
       } catch (err) {
-        console.error("Failed to load places:", err);
+        console.error("[map] Failed to load places:", err);
       }
     };
 
@@ -133,7 +133,7 @@ export default function MapView({ user }: MapViewProps) {
         "postgres_changes",
         { event: "*", schema: "public", table: "places" },
         (payload) => {
-          console.log("Places updated:", payload);
+          console.log("[map] Places updated:", payload);
           // Reload places when any change occurs
           loadPlaces();
         }
@@ -299,6 +299,7 @@ export default function MapView({ user }: MapViewProps) {
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
           <p className="mt-2 text-gray-600">Loading map...</p>
+          {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
         </div>
       </div>
     )
@@ -306,7 +307,7 @@ export default function MapView({ user }: MapViewProps) {
 
   return (
     <div className="relative h-screen">
-      <div ref={mapContainer} className="h-full w-full" />
+      <div ref={mapContainer} className="h-[calc(100vh-64px)] w-full" />
       
       {/* Nearby Places Control */}
       <div className="absolute top-4 right-4 z-30">
