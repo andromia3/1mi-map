@@ -39,6 +39,7 @@ export default function MapView({ user }: MapViewProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoadingNearby, setIsLoadingNearby] = useState(false);
   const [error, setError] = useState("");
+  const [userCenter, setUserCenter] = useState<[number, number] | null>(null);
 
   const {
     register,
@@ -49,83 +50,104 @@ export default function MapView({ user }: MapViewProps) {
     resolver: zodResolver(addPlaceSchema),
   })
 
-  // Initialize map
+  // Get user location first
   useEffect(() => {
-    if (!mapContainer.current || map.current) return
+    const fallback: [number, number] = [-0.1276, 51.5072];
+    if (typeof window === "undefined" || userCenter !== null) return;
+    if (!navigator.geolocation) {
+      setUserCenter(fallback);
+      return;
+    }
+    const timeoutId = window.setTimeout(() => setUserCenter(fallback), 6000);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        window.clearTimeout(timeoutId);
+        setUserCenter([pos.coords.longitude, pos.coords.latitude]);
+      },
+      () => {
+        window.clearTimeout(timeoutId);
+        setUserCenter(fallback);
+      },
+      { enableHighAccuracy: true, timeout: 5000, maximumAge: 600000 }
+    );
+  }, [userCenter]);
+
+  // Initialize map when we know the center
+  useEffect(() => {
+    if (!mapContainer.current || map.current || userCenter === null) return;
 
     // Ensure Mapbox token exists
-    const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "pk.eyJ1IjoiYW5kcm9taWEiLCJhIjoiY21mOXA0eWphMDlpODJscW9weWlvNXB0biJ9.lt-cpkt9IgVZwigPpimEBw"
-    console.log("[map] token present:", Boolean(token))
+    const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "pk.eyJ1IjoiYW5kcm9taWEiLCJhIjoiY21mOXA0eWphMDlpODJscW9weWlvNXB0biJ9.lt-cpkt9IgVZwigPpimEBw";
+    console.log("[map] token present:", Boolean(token));
     if (!token) {
-      setError("Missing NEXT_PUBLIC_MAPBOX_TOKEN. Please set it in Netlify envs.")
-      setIsLoading(false)
-      return
+      setError("Missing NEXT_PUBLIC_MAPBOX_TOKEN. Please set it in Netlify envs.");
+      setIsLoading(false);
+      return;
     }
-    mapboxgl.accessToken = token
+    mapboxgl.accessToken = token;
 
     try {
-      // Validate container dimensions before init
-      const { clientWidth, clientHeight } = mapContainer.current
-      console.log("[map] container size before init", { clientWidth, clientHeight })
-
+      const { clientWidth, clientHeight } = mapContainer.current;
+      console.log("[map] container size before init", { clientWidth, clientHeight });
       map.current = new mapboxgl.Map({
         container: mapContainer.current,
         style: "mapbox://styles/mapbox/light-v11",
-        center: [-0.1276, 51.5072], // London
-        zoom: 11,
-      })
+        center: userCenter,
+        zoom: 12,
+        antialias: false,
+        dragRotate: false,
+        pitchWithRotate: false,
+        attributionControl: false,
+        cooperativeGestures: true,
+      });
+      map.current.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-left");
+      map.current.addControl(new mapboxgl.ScaleControl({ unit: "metric" }), "bottom-left");
+      map.current.addControl(new mapboxgl.AttributionControl({ compact: true }), "bottom-right");
+      map.current.addControl(new mapboxgl.GeolocateControl({ positionOptions: { enableHighAccuracy: true }, trackUserLocation: true, showUserHeading: true }), "top-left");
     } catch (err) {
-      console.error("[map] Failed to create Mapbox instance:", err)
-      setError("Failed to create map. See console for details.")
-      setIsLoading(false)
-      return
+      console.error("[map] Failed to create Mapbox instance:", err);
+      setError("Failed to create map. See console for details.");
+      setIsLoading(false);
+      return;
     }
 
-    // Fallback timeout in case load/error never fires
     const timeoutId = window.setTimeout(() => {
-      if (isLoading) {
-        setError("Map load timed out. Please refresh or check network/token.")
-        setIsLoading(false)
-      }
-    }, 12000)
-
-    // Extra quick fallback to ensure we never hang
+      setError("Map load timed out. Please refresh or check network/token.");
+      setIsLoading(false);
+    }, 12000);
     const quickId = window.setTimeout(() => {
-      if (isLoading) {
-        console.warn("[map] Quick fallback released spinner before load/error")
-        setIsLoading(false)
-      }
-    }, 4000)
+      console.warn("[map] quick-timeout:4s — releasing spinner before load/error");
+      setIsLoading(false);
+    }, 4000);
 
     map.current.on("load", () => {
-      console.log("[map] event:load fired, styleLoaded=", map.current?.isStyleLoaded?.())
-      setIsLoading(false)
-      window.clearTimeout(timeoutId)
-      window.clearTimeout(quickId)
-    })
-
+      console.log("[map] event:load fired, styleLoaded=", map.current?.isStyleLoaded?.());
+      setIsLoading(false);
+      map.current?.resize();
+      window.clearTimeout(timeoutId);
+      window.clearTimeout(quickId);
+    });
     map.current.on("error", (e) => {
-      console.error("[map] event:error", e)
-      setError("Failed to load map. Check Mapbox token and network.")
-      setIsLoading(false)
-      window.clearTimeout(timeoutId)
-      window.clearTimeout(quickId)
-    })
-
+      console.error("[map] event:error", e);
+      setError("Failed to load map. Check Mapbox token and network.");
+      setIsLoading(false);
+      window.clearTimeout(timeoutId);
+      window.clearTimeout(quickId);
+    });
     map.current.on("click", (e) => {
-      setClickedLngLat([e.lngLat.lng, e.lngLat.lat])
-      setShowAddPlace(true)
-    })
+      setClickedLngLat([e.lngLat.lng, e.lngLat.lat]);
+      setShowAddPlace(true);
+    });
 
     return () => {
       if (map.current) {
-        map.current.remove()
-        map.current = null
+        map.current.remove();
+        map.current = null;
       }
-      window.clearTimeout(timeoutId)
-      window.clearTimeout(quickId)
-    }
-  }, [isLoading])
+      window.clearTimeout(timeoutId);
+      window.clearTimeout(quickId);
+    };
+  }, [userCenter]);
 
   // Load places and set up realtime subscription
   useEffect(() => {
