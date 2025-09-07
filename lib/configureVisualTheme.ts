@@ -26,6 +26,9 @@ export function configureVisualTheme(map: mapboxgl.Map, cfg: MapStyleConfig, opt
     safePaint(map, "place-label", "text-halo-color", cfg.palette.labelHalo);
     safePaint(map, "place-label", "text-halo-width", cfg.labels.haloWidth);
     safePaint(map, "poi-label", "text-size", ramp(cfg.labels.poiTextSize));
+    // Hide default Mapbox POI blue icons to keep map minimal
+    safePaint(map, "poi-label", "icon-opacity", 0 as any);
+    safeLayout(map, "poi", "visibility", "none" as any);
     // Transit visibility can go early
     safeLayout(map, "transit-line", "minzoom", cfg.transit.minZoom as any);
     safePaint(map, "transit-line", "line-opacity", ramp(cfg.transit.lineOpacity));

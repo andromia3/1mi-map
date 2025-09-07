@@ -426,6 +426,114 @@ This project is private and proprietary to the 1MI Members' Club.
 - Troubleshooting (Extended)
 - FAQ
 
+## 🔁 End-to-End Quickstart
+
+1) Environment
+- Copy env.example → .env.local and fill `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_MAPBOX_TOKEN` (and MAPBOX_TOKEN if desired).
+
+2) Install and run
+```bash
+npm i
+npm run dev
+```
+
+3) Database bootstrap (Supabase SQL editor or CLI migrations)
+- Run migrations in `/migrations` in order (or paste the profile completeness function/view and RLS policies referenced below).
+- Create the `places` table and `nearby_places` RPC if needed (see SQL above).
+
+4) Auth
+- Visit `/login`, create an account (email/password). After login you will land on `/map`.
+- If your profile is incomplete, middleware redirects to `/onboarding` until complete.
+
+5) Complete onboarding
+- Step 1: display name; optional avatar URL preview if added later.
+- Step 2: city + timezone (prefilled from browser).
+- Step 3: optional bio + links.
+- Finish → RPC verifies completeness → route to `/map`.
+
+6) Map usage
+- Style and camera restore instantly from localStorage.
+- 3D rotate/pitch via right-click drag (or trackpad rotate); compass/visualizePitch on control.
+
+7) Profile
+- Click the avatar in the top-right to open the Profile Sheet (tier, bio, socials, links to edit and sign out).
+
+## 🧭 Routing and Layout
+
+- Public routes: `/login` (and optional `/signup`, `/reset-password` if added)
+- Protected routes (session required): `/map`, `/onboarding`, `/settings/profile`, `/settings/map`
+- Middleware enforces profile completeness for protected pages (redirects to `/onboarding` until complete)
+- Layouts:
+  - `app/layout.tsx`: global providers, ErrorBoundary, Toaster, AppHeader, mapbox CSS
+  - Protected layout (optional advanced split) can be added under `app/(protected)/layout.tsx` to enforce session server-side
+
+## 🔐 Middleware Behavior
+
+- If no session → allow public pages, block protected ones with redirect to `/login`.
+- If session exists → RPC `profile_is_complete`; when false and not already on `/onboarding`, redirect there.
+- Fail-open on errors (log once); avoids lockouts if Supabase is temporarily unavailable.
+
+## 🧪 Database & Migrations (Summary)
+
+- Profile completeness (PL/pgSQL): `profile_is_complete(uid)` + view `current_user_profile_complete`
+- RLS (self-only) for `profiles`: SELECT/INSERT/UPDATE policies where `id = auth.uid()`
+- RLS (self-only) for `user_settings` where applicable
+- Places schema + `nearby_places` RPC for map examples
+
+## 🧱 Validation Schemas
+
+- `lib/validation/profile.ts` includes Zod schemas for profile fields (display_name, city, timezone, optional URLs, bio) and partial schema for PATCH-like updates.
+- Onboarding uses these schemas via `react-hook-form` + `@hookform/resolvers/zod`.
+
+## 🧭 Onboarding Wizard Details
+
+- Provisioning: on mount, fetch `profiles` for current user; if none, insert `{ id: user.id }`
+- Steps validate and upsert only changed keys (trimmed, username lowercased when present)
+- Timezone prefilled from `Intl.supportedValuesOf('timeZone')` if available; fallback to a small curated list
+- Debounced saves (~300ms) on blur for a snappy feel while reducing writes
+- Final step calls `profile_is_complete`; when true → push(`/map`)
+
+## 👤 Profile Sheet
+
+- Opens from the avatar button in the header; loads profile + membership tier
+- Shows avatar or initials, display name, @username (if present), city • timezone, tier badge
+- Optional links (website, twitter/X, instagram, etc.) open in new tabs
+- Actions: Edit profile (settings or onboarding), Sign out (Supabase signOut → `/login`)
+
+## 🗺️ Map Architecture (Frontend)
+
+- `components/MapView.tsx` initializes Mapbox with dynamic style re-application and code-only theming
+- `lib/map/theme.ts` contains `DEFAULT_THEME` (and `NIGHT_THEME`), `STYLE_URLS`, `StyleKey`
+- `lib/configureVisualTheme.ts` safely applies theme operations with helper guards and staged application via `requestAnimationFrame`
+- Terrain/sky add after style load; 3D buildings with vertical gradient and height tint; satellite mode skips recolors/casings
+- WebGL resilience: context-lost/restored listeners, map error logging (collapsed groups), and ResizeObserver
+
+## 🔧 Common Tasks
+
+- Change map default camera: update `DEFAULT_THEME.camera` in `lib/map/theme.ts`
+- Add/edit map style keys: modify `STYLE_URLS` and update the settings page if user-facing
+- Tweak onboarding required fields: update `REQUIRED_FIELDS` in validation (e.g., display_name, city, timezone)
+- Update middleware allowlist: modify `/middleware.ts` matcher/conditions
+
+## 🔒 Security (RLS) Checklist
+
+- Profiles: users can only read/update/insert their own row
+- User settings (if used): same pattern via `user_id = auth.uid()`
+- Never run elevated RPCs without `SECURITY DEFINER`/careful checks
+
+## 🧰 Developer Experience
+
+- Lint/build: `npm run lint && npm run build`
+- Visual tests (optional): `npm run test:e2e` with Playwright snapshotting `/map`
+- Unit tests (optional): `npm run test:unit` (Vitest)
+- Pretty error surfaces: `components/ErrorBoundary.tsx` + toast notifications
+
+## 🧑‍💻 Conventions
+
+- No inline styles unless unavoidable; Tailwind utility classes for layout/spacing/typography
+- Minimal, premium visual language: generous whitespace, rounded-2xl Cards, subtle shadows, neutral colors
+
+
 ## 🎯 Overview and Goals
 
 This app provides a premium, low-latency mapping experience for members to discover and share places. Styling is 100% code-based (no DB reads for theme), while Supabase remains the source for all geo data (places/meetups/houses). The result is predictable theming, fast first paint, and robust fallbacks during network turbulence.

@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import "./globals.css"
 import { ErrorBoundary } from "@/components/ErrorBoundary"
+import AppHeader from "@/components/AppHeader"
 import { Toaster } from "sonner"
 import "mapbox-gl/dist/mapbox-gl.css"
 
@@ -20,7 +21,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={inter.className}>
-        <ErrorBoundary>{children}</ErrorBoundary>
+        <ErrorBoundary>
+          <AppHeader />
+          {children}
+        </ErrorBoundary>
         <Toaster richColors position="top-right" />
       </body>
     </html>

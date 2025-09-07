@@ -22,6 +22,8 @@ export default function MapView({ user }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const userMarker = useRef<mapboxgl.Marker | null>(null);
+  const geolocateRef = useRef<any>(null);
+  const mapHandlersRef = useRef<Array<{ type: string; layer?: string; handler: any }>>([]);
   const [places, setPlaces] = useState<Place[]>([]);
   const [nearbyPlaces, setNearbyPlaces] = useState<NearbyPlace[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -144,6 +146,13 @@ export default function MapView({ user }: MapViewProps) {
         (map.current as any)._resizeObserver = ro;
       } catch {}
 
+      // Set sensible bounds and zoom limits around Greater London
+      try {
+        map.current.setMaxBounds([[-0.6, 51.2], [0.4, 51.75]] as any);
+        map.current.setMinZoom(8);
+        map.current.setMaxZoom(20);
+      } catch {}
+
       // Show a pin for the user's location and keep it updated
       try {
         userMarker.current?.remove();
@@ -158,6 +167,7 @@ export default function MapView({ user }: MapViewProps) {
         showUserHeading: true,
       });
       map.current.addControl(geolocate, "top-left");
+      geolocateRef.current = geolocate;
       // Enable rich interactions (rotate/pitch/scroll/keyboard/pan)
       try {
         map.current.dragRotate.enable();
@@ -167,12 +177,14 @@ export default function MapView({ user }: MapViewProps) {
         map.current.keyboard.enable();
         map.current.dragPan.enable();
       } catch {}
-      geolocate.on("geolocate", (evt: any) => {
+      const onUserLocate = (evt: any) => {
         try {
           const coords: [number, number] = [evt?.coords?.longitude, evt?.coords?.latitude];
           if (coords[0] != null && coords[1] != null) userMarker.current?.setLngLat(coords);
         } catch {}
-      });
+      };
+      geolocate.on("geolocate", onUserLocate as any);
+      mapHandlersRef.current.push({ type: "geolocate", handler: onUserLocate });
     } catch (err) {
       console.error("[map] Failed to create Mapbox instance:", err);
       setError("Failed to create map. See console for details.");
@@ -210,18 +222,68 @@ export default function MapView({ user }: MapViewProps) {
       window.clearTimeout(timeoutId);
       window.clearTimeout(quickId);
     });
-    map.current.on("error", (e) => {
-      console.error("[map] event:error", e);
-      setError("Failed to load map. Check Mapbox token and network.");
+    // WebGL context loss handling
+    try {
+      const canvas: HTMLCanvasElement | null = (map.current as any)?.getCanvas?.() || null;
+      if (canvas) {
+        const onLost = (e: any) => {
+          try { e?.preventDefault?.(); } catch {}
+          console.warn("[map] WebGL context lost — waiting for restore");
+          setIsLoading(true);
+        };
+        const onRestored = () => {
+          console.warn("[map] WebGL context restored — triggering repaint");
+          try { (map.current as any)?.triggerRepaint?.(); } catch {}
+          setIsLoading(false);
+        };
+        canvas.addEventListener('webglcontextlost', onLost, false);
+        canvas.addEventListener('webglcontextrestored', onRestored, false);
+        (map.current as any)._webglHandlers = { onLost, onRestored };
+      }
+    } catch {}
+    const onError = (e: any) => {
+      if (process.env.NODE_ENV !== 'production') {
+        console.groupCollapsed('[map] error');
+        console.error(e);
+        console.groupEnd();
+      }
+      setError("Map error occurred. See console for details.");
       setIsLoading(false);
       window.clearTimeout(timeoutId);
       window.clearTimeout(quickId);
-    });
+    };
+    map.current.on("error", onError);
+    mapHandlersRef.current.push({ type: "error", handler: onError });
 
 
     return () => {
       if (map.current) {
         try { (map.current as any)._resizeObserver?.disconnect?.(); } catch {}
+        try {
+          const cnv: HTMLCanvasElement | null = (map.current as any)?.getCanvas?.() || null;
+          const handlers = (map.current as any)._webglHandlers;
+          if (cnv && handlers) {
+            cnv.removeEventListener('webglcontextlost', handlers.onLost);
+            cnv.removeEventListener('webglcontextrestored', handlers.onRestored);
+          }
+        } catch {}
+        // Remove map event listeners
+        try {
+          for (const h of mapHandlersRef.current) {
+            if (h.layer) (map.current as any).off?.(h.type, h.layer, h.handler);
+            else (map.current as any).off?.(h.type, h.handler);
+          }
+          mapHandlersRef.current = [];
+        } catch {}
+        // Remove geolocate control listeners & control
+        try {
+          if (geolocateRef.current) {
+            const onUserLocate = mapHandlersRef.current.find(h => h.type === 'geolocate')?.handler;
+            if (onUserLocate) geolocateRef.current.off?.('geolocate', onUserLocate);
+            map.current.removeControl(geolocateRef.current);
+            geolocateRef.current = null;
+          }
+        } catch {}
         map.current.remove();
         map.current = null;
       }
