@@ -1,23 +1,31 @@
-import { NextResponse } from "next/server";
-import { supabaseServer } from "@/lib/supabase/server";
+import { NextRequest, NextResponse } from "next/server";
+import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs";
 
-export async function middleware(req: Request) {
+export const config = { matcher: ["/map", "/map/:path*"] };
+
+export async function middleware(req: NextRequest) {
   const url = new URL(req.url);
-  const protectedPaths = ["/map"];
-  const isProtected = protectedPaths.some(p => url.pathname.startsWith(p));
-  if (!isProtected) return NextResponse.next();
+  const res = NextResponse.next({ request: { headers: req.headers } });
 
-  // Create a response we can pass cookies through
-  const res = NextResponse.next();
-  const supabase = supabaseServer();
-  const { data: { session } } = await supabase.auth.getSession();
+  const supabase = createMiddlewareClient(
+    { req, res },
+    {
+      supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      supabaseKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    }
+  );
 
-  if (!session) {
-    const redirectUrl = new URL("/login", url.origin);
-    redirectUrl.searchParams.set("redirect", url.pathname);
-    return NextResponse.redirect(redirectUrl);
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  const isProtected = url.pathname === "/map" || url.pathname.startsWith("/map/");
+
+  if (isProtected && !session) {
+    const login = new URL("/login", url.origin);
+    login.searchParams.set("redirect", url.pathname);
+    return NextResponse.redirect(login);
   }
+
   return res;
 }
-
-export const config = { matcher: ["/map/:path*", "/map"] };

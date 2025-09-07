@@ -3,11 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "engines": {
-    "node": ">=20.11.0"
+    "node": ">=20"
   },
   "scripts": {
     "dev": "next dev",
-    "build": "node scripts/verify-clean.js && next build",
+    "build": "node scripts/verify-clean.js && next build && node scripts/verify-postbuild.js",
     "start": "next start",
     "lint": "next lint",
     "verify-clean": "node scripts/verify-clean.js"
