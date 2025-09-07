@@ -53,7 +53,14 @@ export default function MapView({ user }: MapViewProps) {
   useEffect(() => {
     if (!mapContainer.current || map.current) return
 
-    mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!
+    // Ensure Mapbox token exists
+    const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
+    if (!token) {
+      setError("Missing NEXT_PUBLIC_MAPBOX_TOKEN. Please set it in Netlify envs.")
+      setIsLoading(false)
+      return
+    }
+    mapboxgl.accessToken = token
 
     map.current = new mapboxgl.Map({
       container: mapContainer.current,
@@ -63,6 +70,12 @@ export default function MapView({ user }: MapViewProps) {
     })
 
     map.current.on("load", () => {
+      setIsLoading(false)
+    })
+
+    map.current.on("error", (e) => {
+      console.error("Mapbox error", e)
+      setError("Failed to load map. Check Mapbox token and network.")
       setIsLoading(false)
     })
 

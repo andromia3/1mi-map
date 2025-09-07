@@ -5,16 +5,17 @@ import Topbar from "@/components/Topbar";
 
 export default async function MapPage() {
   const supabase = supabaseServer();
-  const { data: { session } } = await supabase.auth.getSession();
+  // Prefer getUser() which verifies authenticity with Supabase
+  const { data: { user } } = await supabase.auth.getUser();
   
-  if (!session) {
+  if (!user) {
     redirect("/login");
   }
 
   return (
     <>
-      <Topbar displayName={session.user.user_metadata?.display_name || session.user.email || null} />
-      <MapView user={session.user} />
+      <Topbar displayName={user.user_metadata?.display_name || user.email || null} />
+      <MapView user={user} />
     </>
   );
 }
