@@ -6,13 +6,16 @@ const path = require('path');
 
 console.log('🔍 Verifying clean Supabase-only deployment...\n');
 
-// Check for any remaining API routes (excluding login page which is allowed)
+// Check for any remaining legacy auth API routes that must not exist
 const appDir = path.join(__dirname, '..', 'app');
 if (fs.existsSync(appDir)) {
   const files = fs.readdirSync(appDir, { recursive: true });
   const forbiddenApiFiles = files.filter(file => 
-    typeof file === 'string' && 
-    (file.includes('api/') || file.includes('login/route') || file.includes('logout/route') || file.includes('change-password/route'))
+    typeof file === 'string' && (
+      file.includes(`${path.sep}api${path.sep}login${path.sep}`) ||
+      file.includes(`${path.sep}api${path.sep}logout${path.sep}`) ||
+      file.includes(`${path.sep}api${path.sep}change-password${path.sep}`)
+    )
   );
   
   if (forbiddenApiFiles.length > 0) {

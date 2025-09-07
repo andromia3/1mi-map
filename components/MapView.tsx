@@ -25,7 +25,7 @@ type Place = Database["public"]["Tables"]["places"]["Row"];
 type NearbyPlace = Database["public"]["Functions"]["nearby_places"]["Returns"][0];
 
 interface MapViewProps {
-  user: { id: string; email: string; user_metadata?: { display_name?: string } };
+  user: { id: string; email?: string; user_metadata?: { display_name?: string } };
 }
 
 export default function MapView({ user }: MapViewProps) {
@@ -131,8 +131,8 @@ export default function MapView({ user }: MapViewProps) {
       const { data: nearby, error } = await supabase.rpc('nearby_places', {
         p_lat: lat,
         p_lng: lng,
-        p_radius_m: radiusM
-      });
+        p_radius_m: radiusM,
+      } as any);
       
       if (error) {
         console.error("Failed to load nearby places:", error);
@@ -235,7 +235,7 @@ export default function MapView({ user }: MapViewProps) {
         return;
       }
 
-      const { data: newPlace, error } = await supabase
+      const { data: newPlace, error } = await (supabase as any)
         .from("places")
         .insert({
           title: data.title,

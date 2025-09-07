@@ -13,7 +13,7 @@ export default async function MapPage() {
 
   return (
     <>
-      <Topbar displayName={session.user.user_metadata?.display_name || session.user.email} />
+      <Topbar displayName={session.user.user_metadata?.display_name || session.user.email || null} />
       <MapView user={session.user} />
     </>
   );
