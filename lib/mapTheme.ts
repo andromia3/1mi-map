@@ -92,4 +92,7 @@ export const DEFAULT_THEME: MapStyleConfig = {
   },
 };
 
+export const STYLE_KEYS = ["default", "night", "satellite"] as const;
+export type StyleKey = typeof STYLE_KEYS[number];
+
 

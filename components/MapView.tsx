@@ -4,25 +4,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
-import { X } from "lucide-react";
 import { supabaseBrowser } from "@/lib/supabase/browser";
-import { DEFAULT_THEME, type MapStyleConfig } from "@/lib/mapTheme";
+import { DEFAULT_THEME, type MapStyleConfig, type StyleKey } from "@/lib/mapTheme";
 import { configureVisualTheme } from "@/lib/configureVisualTheme";
 import type { Database } from "@/lib/supabase/types";
 
-const addPlaceSchema = z.object({
-  title: z.string().min(1, "Title is required"),
-  description: z.string().optional(),
-});
-
-type AddPlaceFormData = z.infer<typeof addPlaceSchema>;
+// Add-new-place functionality removed for now
 type Place = Database["public"]["Tables"]["places"]["Row"];
 type NearbyPlace = Database["public"]["Functions"]["nearby_places"]["Returns"][0];
 
@@ -37,28 +24,19 @@ export default function MapView({ user }: MapViewProps) {
   const [places, setPlaces] = useState<Place[]>([]);
   const [nearbyPlaces, setNearbyPlaces] = useState<NearbyPlace[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [showAddPlace, setShowAddPlace] = useState(false);
-  const [clickedLngLat, setClickedLngLat] = useState<[number, number] | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoadingNearby, setIsLoadingNearby] = useState(false);
   const [error, setError] = useState("");
   const [userCenter, setUserCenter] = useState<[number, number] | null>(null);
   const styles = [
-    { id: "streets", label: "Streets", url: "mapbox://styles/mapbox/streets-v12" },
-    { id: "light", label: "Light", url: "mapbox://styles/mapbox/light-v11" },
-    { id: "dark", label: "Dark", url: "mapbox://styles/mapbox/dark-v11" },
+    { id: "default", label: "Standard", url: "mapbox://styles/mapbox/standard" },
+    { id: "night", label: "Night", url: "mapbox://styles/mapbox/standard" },
     { id: "satellite", label: "Satellite", url: "mapbox://styles/mapbox/satellite-streets-v12" },
   ];
-  const [styleUrl, setStyleUrl] = useState<string>(styles[0].url);
+  const styleUrlFor = (key: StyleKey) => (key === "satellite" ? "mapbox://styles/mapbox/satellite-streets-v12" : "mapbox://styles/mapbox/standard");
+  const [styleKey, setStyleKey] = useState<StyleKey>("default");
+  const [styleUrl, setStyleUrl] = useState<string>(styleUrlFor("default"));
 
-  const {
-    register,
-    handleSubmit,
-    reset,
-    formState: { errors },
-  } = useForm<AddPlaceFormData>({
-    resolver: zodResolver(addPlaceSchema),
-  })
+  // Forms, validation, and modal for adding new places have been removed
 
   // Get user location first
   useEffect(() => {
@@ -156,7 +134,7 @@ export default function MapView({ user }: MapViewProps) {
       map.current?.resize();
       // Theme caching: apply cached theme immediately, then refresh from Supabase
       const applyTheme = (cfg: MapStyleConfig) => {
-        try { configureVisualTheme(map.current!, cfg); } catch (e) { console.warn("[map] theme apply failed", e); }
+        try { configureVisualTheme(map.current!, cfg, { styleKey }); } catch (e) { console.warn("[map] theme apply failed", e); }
       };
       let appliedFromCache = false;
       try {
@@ -198,11 +176,7 @@ export default function MapView({ user }: MapViewProps) {
       window.clearTimeout(timeoutId);
       window.clearTimeout(quickId);
     });
-    // Disable new-place form for now (requested)
-    // map.current.on("click", (e) => {
-    //   setClickedLngLat([e.lngLat.lng, e.lngLat.lat]);
-    //   setShowAddPlace(true);
-    // });
+
 
     return () => {
       if (map.current) {
@@ -493,54 +467,7 @@ export default function MapView({ user }: MapViewProps) {
     else m.once("load", ensureLayers);
   }, [nearbyGeoJson, styleUrl]);
 
-  const onSubmitPlace = async (data: AddPlaceFormData) => {
-    if (!clickedLngLat) return;
-
-    setIsSubmitting(true);
-    setError("");
-
-    try {
-      const supabase = supabaseBrowser();
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session) {
-        setError("You must be logged in to add places");
-        return;
-      }
-
-      const { data: newPlace, error } = await (supabase as any)
-        .from("places")
-        .insert({
-          title: data.title,
-          description: data.description,
-          lat: clickedLngLat[1],
-          lng: clickedLngLat[0],
-          created_by: session.user.id,
-        })
-        .select()
-        .single();
-
-      if (error) {
-        setError(error.message);
-      } else {
-        setPlaces(prev => [newPlace, ...prev]);
-        setShowAddPlace(false);
-        setClickedLngLat(null);
-        reset();
-      }
-    } catch (err) {
-      setError("Network error. Please try again.");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleCloseAddPlace = () => {
-    setShowAddPlace(false)
-    setClickedLngLat(null)
-    reset()
-    setError("")
-  }
+  // onSubmitPlace and related modal handlers removed
 
   return (
     <div className="relative h-screen">
@@ -549,11 +476,31 @@ export default function MapView({ user }: MapViewProps) {
         <label className="text-xs text-gray-600 mr-2">Style</label>
         <select
           className="text-sm border rounded px-2 py-1 bg-white"
-          value={styleUrl}
-          onChange={(e) => setStyleUrl(e.target.value)}
+          value={styleKey}
+          onChange={(e) => {
+            const nextKey = e.target.value as StyleKey;
+            if (nextKey === styleKey) return;
+            setStyleKey(nextKey);
+            const current = map.current;
+            const camera = current ? { center: current.getCenter().toArray() as [number, number], zoom: current.getZoom(), pitch: current.getPitch(), bearing: current.getBearing() } : null;
+            const nextUrl = styleUrlFor(nextKey);
+            setStyleUrl(nextUrl);
+            if (current) {
+              current.once("style.load", () => {
+                try {
+                  const cached = localStorage.getItem("mapTheme:current");
+                  const cfg = cached ? (JSON.parse(cached) as MapStyleConfig) : DEFAULT_THEME;
+                  configureVisualTheme(current, cfg, { styleKey: nextKey });
+                } catch {}
+                // Re-mount layers after style reload
+                // minimal ensure by triggering our existing effects via data changes
+              });
+              current.setStyle(nextUrl);
+            }
+          }}
         >
           {styles.map((s) => (
-            <option key={s.id} value={s.url}>{s.label}</option>
+            <option key={s.id} value={s.id}>{s.label}</option>
           ))}
         </select>
       </div>
@@ -586,7 +533,7 @@ export default function MapView({ user }: MapViewProps) {
         </Button>
       </div>
       
-      {/* Add-place modal intentionally removed per request */}
+      {/* Add-new-place functionality intentionally removed for now */}
     </div>
   )
 }
