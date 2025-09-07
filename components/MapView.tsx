@@ -54,7 +54,7 @@ export default function MapView({ user }: MapViewProps) {
     if (!mapContainer.current || map.current) return
 
     // Ensure Mapbox token exists
-    const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
+    const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "pk.eyJ1IjoiYW5kcm9taWEiLCJhIjoiY21mOXA0eWphMDlpODJscW9weWlvNXB0biJ9.lt-cpkt9IgVZwigPpimEBw"
     if (!token) {
       setError("Missing NEXT_PUBLIC_MAPBOX_TOKEN. Please set it in Netlify envs.")
       setIsLoading(false)
@@ -69,14 +69,24 @@ export default function MapView({ user }: MapViewProps) {
       zoom: 11,
     })
 
+    // Fallback timeout in case load/error never fires
+    const timeoutId = window.setTimeout(() => {
+      if (isLoading) {
+        setError("Map load timed out. Please refresh or check network/token.")
+        setIsLoading(false)
+      }
+    }, 12000)
+
     map.current.on("load", () => {
       setIsLoading(false)
+      window.clearTimeout(timeoutId)
     })
 
     map.current.on("error", (e) => {
       console.error("Mapbox error", e)
       setError("Failed to load map. Check Mapbox token and network.")
       setIsLoading(false)
+      window.clearTimeout(timeoutId)
     })
 
     map.current.on("click", (e) => {
@@ -89,6 +99,7 @@ export default function MapView({ user }: MapViewProps) {
         map.current.remove()
         map.current = null
       }
+      window.clearTimeout(timeoutId)
     }
   }, [])
 
