@@ -81,12 +81,20 @@ See [SEEDING.md](./SEEDING.md) for detailed connection setup.
 ### 4. Database Migration & Seeding
 
 **First-time setup sequence:**
+
+**Option 1: Automated Setup (Recommended)**
+```powershell
+# Run the setup script (creates .env, pushes schema, seeds database)
+.\setup-db.ps1
+```
+
+**Option 2: Manual Setup**
 ```bash
-# 1. Copy environment variables for Prisma CLI
-Copy-Item .env.local .env
+# 1. Create .env file with Direct connection for Prisma CLI
+echo 'DATABASE_URL="postgresql://postgres:p3V9tQG2rJ6xN1yW8kZ5cH4mB7uR3qT@aws-1-eu-west-2.pooler.supabase.com:5432/postgres?sslmode=require"' > .env
 
 # 2. Deploy database schema
-npx prisma migrate deploy
+npx prisma db push
 
 # 3. Seed the database with demo users
 npx prisma db seed

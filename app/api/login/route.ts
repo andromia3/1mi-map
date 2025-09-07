@@ -5,20 +5,28 @@ import bcrypt from "bcryptjs";
 
 export async function POST(req: Request) {
   try {
-    const { username, password } = await req.json();
+    const body = await req.json();
+    let username = (body?.username ?? "").trim();
+    const password = (body?.password ?? "").toString();
 
     if (!username || !password) {
       return NextResponse.json({ error: "INVALID_INPUT" }, { status: 400 });
     }
 
+    // If you want usernames case-insensitive, normalize here:
+    // username = username.toLowerCase();
+
     const user = await prisma.user.findUnique({ where: { username } });
+
     if (!user) {
-      return NextResponse.json({ error: "INVALID_CREDENTIALS" }, { status: 401 });
+      console.error("LOGIN_NO_USER", { username });
+      return NextResponse.json({ error: "NO_USER" }, { status: 401 });
     }
 
     const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) {
-      return NextResponse.json({ error: "INVALID_CREDENTIALS" }, { status: 401 });
+      console.error("LOGIN_BAD_PASSWORD", { username });
+      return NextResponse.json({ error: "BAD_PASSWORD" }, { status: 401 });
     }
 
     const res = NextResponse.json({ ok: true });
