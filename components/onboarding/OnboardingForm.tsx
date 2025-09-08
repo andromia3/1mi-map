@@ -79,12 +79,7 @@ export default function OnboardingForm() {
   useEffect(() => {
     const id = window.setInterval(() => {
       try {
-        const draft = {
-          step,
-          form1: form1.getValues(),
-          form2: form2.getValues(),
-          form3: form3.getValues(),
-        };
+        const draft = { step, form1: form1.getValues(), form2: form2.getValues(), form3: form3.getValues() };
         localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
       } catch {}
     }, 500);
@@ -178,7 +173,7 @@ export default function OnboardingForm() {
         try { localStorage.removeItem(DRAFT_KEY); } catch {}
         toast.success("Profile completed");
         try { document.cookie = "onboarding_ok=1; Max-Age=60; Path=/"; } catch {}
-        window.location.href = "/map";
+        window.location.href = "/map?ok=1";
       } else {
         // As a fallback, re-check from DB after a brief delay
         await new Promise((r) => setTimeout(r, 200));
@@ -187,8 +182,6 @@ export default function OnboardingForm() {
         if (complete) {
           try { localStorage.removeItem(DRAFT_KEY); } catch {}
           toast.success("Profile completed");
-          try { document.cookie = "onboarding_ok=1; Max-Age=60; Path=/"; } catch {}
-          window.location.href = "/map?ok=1";
           try { document.cookie = "onboarding_ok=1; Max-Age=60; Path=/"; } catch {}
           window.location.href = "/map?ok=1";
         } else {
@@ -201,9 +194,15 @@ export default function OnboardingForm() {
     setSavingStep(false);
   };
 
+  const labels = ["About you", "Location & time", "Bio & links"];
+
+  const displayNameDone = !!form1.watch("display_name")?.trim();
+  const cityDone = !!form2.watch("city")?.trim();
+  const timezoneDone = !!form2.watch("timezone")?.trim();
+
   return (
     <div className="w-full max-w-xl mx-auto">
-      <StepNav step={step} />
+      <StepNav step={step} labels={labels} onStepClick={(s) => { if (s < step) setStep(s); }} />
       {step === 1 && (
         <form onSubmit={(e) => { e.preventDefault(); onNext1(); }} className="space-y-4 transition-opacity duration-300 ease-out">
           <div className="text-sm text-gray-700 bg-gray-50 border rounded p-3">
@@ -230,7 +229,7 @@ export default function OnboardingForm() {
             })()}
           </div>
           <div className="flex gap-2 justify-end">
-            <Button type="submit" disabled={savingStep}>{savingStep ? 'Saving…' : 'Save & Continue'}</Button>
+            <Button type="submit" disabled={savingStep || !displayNameDone}>{savingStep ? 'Saving…' : 'Save & Continue'}</Button>
           </div>
         </form>
       )}
@@ -256,7 +255,7 @@ export default function OnboardingForm() {
           <div className="flex gap-2 justify-between">
             <Button type="button" variant="outline" onClick={() => setStep(1)}>Back</Button>
             <div className="ml-auto">
-              <Button type="submit" disabled={savingStep}>{savingStep ? 'Saving…' : 'Save & Continue'}</Button>
+              <Button type="submit" disabled={savingStep || !cityDone || !timezoneDone}>{savingStep ? 'Saving…' : 'Save & Continue'}</Button>
             </div>
           </div>
         </form>
@@ -266,6 +265,14 @@ export default function OnboardingForm() {
           <div className="text-sm text-gray-700 bg-gray-50 border rounded p-3">
             <p className="font-medium">Step 3 of 3 — Bio & links</p>
             <p className="mt-1">Optional: add a short bio and links. You can edit these anytime in Settings.</p>
+          </div>
+          <div className="rounded border p-3 text-xs text-gray-700 bg-white">
+            <p className="font-medium mb-1">Completion checklist</p>
+            <ul className="list-disc pl-5 space-y-0.5">
+              <li className={displayNameDone ? 'text-green-700' : 'text-gray-700'}>Display name</li>
+              <li className={cityDone ? 'text-green-700' : 'text-gray-700'}>City</li>
+              <li className={timezoneDone ? 'text-green-700' : 'text-gray-700'}>Timezone</li>
+            </ul>
           </div>
           <div>
             <Label htmlFor="bio">Bio</Label>
@@ -298,7 +305,7 @@ export default function OnboardingForm() {
           <div className="flex gap-2 justify-between">
             <Button type="button" variant="outline" onClick={() => setStep(2)}>Back</Button>
             <div className="ml-auto">
-              <Button type="submit" disabled={savingStep}>{savingStep ? 'Saving…' : 'Finish'}</Button>
+              <Button type="submit" disabled={savingStep || !displayNameDone || !cityDone || !timezoneDone}>{savingStep ? 'Saving…' : 'Finish'}</Button>
             </div>
           </div>
         </form>
