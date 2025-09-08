@@ -41,6 +41,10 @@ export async function middleware(req: NextRequest) {
     if (url.pathname.startsWith('/onboarding')) {
       return res;
     }
+    // If client signaled onboarding completed just now, allow pass-through once
+    if (req.cookies.get('onboarding_ok')?.value === '1') {
+      return res;
+    }
     try {
       const { data: profile, error } = await supabase
         .from("profiles")

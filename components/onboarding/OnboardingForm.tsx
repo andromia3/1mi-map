@@ -177,6 +177,7 @@ export default function OnboardingForm() {
       if (completeLocal) {
         try { localStorage.removeItem(DRAFT_KEY); } catch {}
         toast.success("Profile completed");
+        try { document.cookie = "onboarding_ok=1; Max-Age=60; Path=/"; } catch {}
         window.location.href = "/map";
       } else {
         // As a fallback, re-check from DB after a brief delay
@@ -186,6 +187,7 @@ export default function OnboardingForm() {
         if (complete) {
           try { localStorage.removeItem(DRAFT_KEY); } catch {}
           toast.success("Profile completed");
+          try { document.cookie = "onboarding_ok=1; Max-Age=60; Path=/"; } catch {}
           window.location.href = "/map";
         } else {
           toast("Profile incomplete; please finish required fields");
