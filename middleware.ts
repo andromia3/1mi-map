@@ -42,7 +42,7 @@ export async function middleware(req: NextRequest) {
       return res;
     }
     // If client signaled onboarding completed just now, allow pass-through once
-    if (req.cookies.get('onboarding_ok')?.value === '1') {
+    if (req.cookies.get('onboarding_ok')?.value === '1' || url.searchParams.get('ok') === '1') {
       return res;
     }
     try {

@@ -188,7 +188,9 @@ export default function OnboardingForm() {
           try { localStorage.removeItem(DRAFT_KEY); } catch {}
           toast.success("Profile completed");
           try { document.cookie = "onboarding_ok=1; Max-Age=60; Path=/"; } catch {}
-          window.location.href = "/map";
+          window.location.href = "/map?ok=1";
+          try { document.cookie = "onboarding_ok=1; Max-Age=60; Path=/"; } catch {}
+          window.location.href = "/map?ok=1";
         } else {
           toast("Profile incomplete; please finish required fields");
         }
