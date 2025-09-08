@@ -166,6 +166,8 @@ export default function OnboardingForm() {
       const { data: { session } } = await supabase.auth.getSession();
       const uid = session?.user?.id;
       if (!uid) { window.location.href = "/login"; return; }
+      // Re-check completeness after a short delay to avoid read-after-write staleness
+      await new Promise((r) => setTimeout(r, 150));
       const { data: p } = await supabase.from("profiles").select("display_name, city, timezone").eq("id", uid).maybeSingle();
       const complete = Boolean(p && String(p.display_name||"").trim() && String(p.city||"").trim() && String(p.timezone||"").trim());
       if (complete) {
@@ -186,6 +188,10 @@ export default function OnboardingForm() {
       <StepNav step={step} />
       {step === 1 && (
         <form onSubmit={(e) => { e.preventDefault(); onNext1(); }} className="space-y-4 transition-opacity duration-300 ease-out">
+          <div className="text-sm text-gray-700 bg-gray-50 border rounded p-3">
+            <p className="font-medium">Step 1 of 3 — About you</p>
+            <p className="mt-1">Your display name will be shown to members. Add an optional avatar URL.</p>
+          </div>
           <div>
             <Label htmlFor="display_name">Display name</Label>
             <Input id="display_name" {...form1.register("display_name")} autoFocus />
@@ -212,6 +218,10 @@ export default function OnboardingForm() {
       )}
       {step === 2 && (
         <form onSubmit={(e) => { e.preventDefault(); onNext2(); }} className="space-y-4 transition-opacity duration-300 ease-out">
+          <div className="text-sm text-gray-700 bg-gray-50 border rounded p-3">
+            <p className="font-medium">Step 2 of 3 — Location & time</p>
+            <p className="mt-1">Share your city and preferred timezone for event suggestions.</p>
+          </div>
           <div>
             <Label htmlFor="city">City</Label>
             <Input id="city" {...form2.register("city", { onBlur: () => { const v = form2.getValues("city").trim(); form2.setValue("city", v, { shouldValidate: true }); scheduleSave({ city: v }); } })} />
@@ -235,6 +245,10 @@ export default function OnboardingForm() {
       )}
       {step === 3 && (
         <form onSubmit={(e) => { e.preventDefault(); onFinish(); }} className="space-y-4 transition-opacity duration-300 ease-out">
+          <div className="text-sm text-gray-700 bg-gray-50 border rounded p-3">
+            <p className="font-medium">Step 3 of 3 — Bio & links</p>
+            <p className="mt-1">Optional: add a short bio and links. You can edit these anytime in Settings.</p>
+          </div>
           <div>
             <Label htmlFor="bio">Bio</Label>
             <Textarea id="bio" rows={3} {...form3.register("bio", { onBlur: () => scheduleSave({ bio: (form3.getValues("bio") || "").trim() || null }) })} />

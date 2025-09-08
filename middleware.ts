@@ -37,6 +37,10 @@ export async function middleware(req: NextRequest) {
 
   // Fail-open profile completeness check in code (no DB RPC)
   if (isProtected && session) {
+    // Never redirect away from onboarding itself, to avoid loops
+    if (url.pathname.startsWith('/onboarding')) {
+      return res;
+    }
     try {
       const { data: profile, error } = await supabase
         .from("profiles")
