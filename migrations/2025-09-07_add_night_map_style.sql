@@ -51,5 +51,3 @@ values (
   )
 )
 on conflict (key) do update set config = excluded.config;
-
-

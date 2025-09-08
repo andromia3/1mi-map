@@ -12,14 +12,15 @@ import {
 
 interface ProfileData {
   display_name: string | null;
-  username: string | null;
   image_url: string | null;
   city: string | null;
   timezone: string | null;
   bio: string | null;
-  website?: string | null;
-  twitter?: string | null;
-  instagram?: string | null;
+  website_url?: string | null;
+  x_url?: string | null;
+  instagram_url?: string | null;
+  linkedin_url?: string | null;
+  youtube_url?: string | null;
   tier?: string | null;
 }
 
@@ -36,7 +37,7 @@ export default function ProfileSheet({ open, onOpenChange }: { open: boolean; on
         const { data: { session } } = await supabase.auth.getSession();
         const userId = session?.user?.id;
         if (!userId) { setLoading(false); return; }
-        const { data: profile } = await supabase.from("profiles").select("display_name, username, image_url, city, timezone, bio, website, twitter, instagram").eq("id", userId).single();
+        const { data: profile } = await supabase.from("profiles").select("display_name, image_url, city, timezone, bio, website_url, x_url, instagram_url, linkedin_url, youtube_url").eq("id", userId).single();
         const { data: membership } = await supabase.from("app_memberships").select("tier").eq("user_id", userId).maybeSingle();
         setData({ ...(profile as any), tier: membership?.tier || null });
       } catch {
@@ -53,7 +54,7 @@ export default function ProfileSheet({ open, onOpenChange }: { open: boolean; on
     window.location.href = "/login";
   };
 
-  const initials = (data?.display_name || data?.username || "").split(" ").map(s => s[0]).join("").slice(0,2).toUpperCase();
+  const initials = (data?.display_name || "").split(" ").map(s => s[0]).join("").slice(0,2).toUpperCase();
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -86,16 +87,18 @@ export default function ProfileSheet({ open, onOpenChange }: { open: boolean; on
               </div>
               <div>
                 <div className="font-medium">{data.display_name || "Unnamed"}</div>
-                <div className="text-xs text-gray-600">@{data.username || "username"}</div>
+                {/* username removed in this mode */}
               </div>
               {data.tier && <div className="ml-auto text-xs px-2 py-1 rounded bg-gray-100">{data.tier}</div>}
             </div>
             <div className="text-xs text-gray-600">{[data.city, data.timezone].filter(Boolean).join(" • ")}</div>
             {data.bio && <div className="text-sm text-gray-800 line-clamp-4">{data.bio}</div>}
-            <div className="flex items-center gap-3 text-sm">
-              {data.website && <a href={data.website} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">Website</a>}
-              {data.twitter && <a href={data.twitter} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">Twitter</a>}
-              {data.instagram && <a href={data.instagram} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">Instagram</a>}
+            <div className="flex flex-wrap items-center gap-3 text-sm">
+              {data.website_url && <a href={data.website_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">Website</a>}
+              {data.linkedin_url && <a href={data.linkedin_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">LinkedIn</a>}
+              {data.instagram_url && <a href={data.instagram_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">Instagram</a>}
+              {data.x_url && <a href={data.x_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">X</a>}
+              {data.youtube_url && <a href={data.youtube_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">YouTube</a>}
             </div>
             <div className="flex gap-2 justify-between">
               <Button variant="outline" onClick={() => { window.location.href = "/settings/profile"; }}>Edit profile</Button>

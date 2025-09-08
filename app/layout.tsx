@@ -5,6 +5,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary"
 import AppHeader from "@/components/AppHeader"
 import { Toaster } from "sonner"
 import "mapbox-gl/dist/mapbox-gl.css"
+import NetStatus from "@/src/components/NetStatus"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -26,6 +27,7 @@ export default function RootLayout({
           {children}
         </ErrorBoundary>
         <Toaster richColors position="top-right" />
+        <NetStatus />
       </body>
     </html>
   )

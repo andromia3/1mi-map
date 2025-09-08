@@ -1,14 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import mapboxgl from "mapbox-gl";
-import "mapbox-gl/dist/mapbox-gl.css";
+// Dynamic import for faster TTI
+let mapboxgl: typeof import('mapbox-gl') | null = null;
 import { Button } from "@/components/ui/button";
+import { log } from "@/src/lib/log";
 import { supabaseBrowser } from "@/lib/supabase/browser";
 import { DEFAULT_THEME, NIGHT_THEME, type MapStyleConfig, type StyleKey, STYLE_URLS } from "@/lib/theme";
 import { configureVisualTheme } from "@/lib/configureVisualTheme";
 import type { Database } from "@/lib/supabase/types";
 import MapVignetteOverlay from "./MapVignetteOverlay";
+import { mountAll } from "@/src/lib/layerRegistry";
 
 // Add-new-place functionality removed for now
 type Place = Database["public"]["Tables"]["places"]["Row"];
@@ -25,8 +27,10 @@ export default function MapView({ user }: MapViewProps) {
   const geolocateRef = useRef<any>(null);
   const mapHandlersRef = useRef<Array<{ type: string; layer?: string; handler: any }>>([]);
   const [places, setPlaces] = useState<Place[]>([]);
+  const workerRef = useRef<Worker | null>(null);
   const [nearbyPlaces, setNearbyPlaces] = useState<NearbyPlace[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSwitchingStyle, setIsSwitchingStyle] = useState(false);
   const [isLoadingNearby, setIsLoadingNearby] = useState(false);
   const [error, setError] = useState("");
   const [userCenter, setUserCenter] = useState<[number, number] | null>(null);
@@ -41,6 +45,7 @@ export default function MapView({ user }: MapViewProps) {
   const [styleKey, setStyleKey] = useState<StyleKey>(initialStyleKey);
   const [styleUrl, setStyleUrl] = useState<string>(styleUrlFor(initialStyleKey));
   const saveTimer = useRef<number | null>(null);
+  const lastCameraRef = useRef<{ center: [number, number]; zoom: number; pitch: number; bearing: number } | null>(null);
   const applyStyleKey = (nextKey: StyleKey) => {
     if (nextKey === styleKey && map.current) return;
     setStyleKey(nextKey);
@@ -48,7 +53,21 @@ export default function MapView({ user }: MapViewProps) {
     setStyleUrl(nextUrl);
     try { localStorage.setItem("map:style_key", nextKey); } catch {}
     // Force immediate style swap for reliability
-    try { map.current?.setStyle(nextUrl); } catch {}
+    try {
+      if (map.current) {
+        const m = map.current;
+        try {
+          lastCameraRef.current = {
+            center: m.getCenter().toArray() as [number, number],
+            zoom: m.getZoom(),
+            pitch: m.getPitch(),
+            bearing: m.getBearing(),
+          };
+        } catch {}
+        setIsSwitchingStyle(true);
+        m.setStyle(nextUrl);
+      }
+    } catch {}
   };
 
   // Feature flags
@@ -96,17 +115,22 @@ export default function MapView({ user }: MapViewProps) {
 
     // Ensure Mapbox token exists
     const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "pk.eyJ1IjoiYW5kcm9taWEiLCJhIjoiY21mOXA0eWphMDlpODJscW9weWlvNXB0biJ9.lt-cpkt9IgVZwigPpimEBw";
-    console.log("[map] token present:", Boolean(token));
+    log.info("[map] token present:", Boolean(token));
     if (!token) {
       setError("Missing NEXT_PUBLIC_MAPBOX_TOKEN. Please set it in Netlify envs.");
       setIsLoading(false);
       return;
     }
-    mapboxgl.accessToken = token;
+    (async () => {
+      if (!mapboxgl) {
+        const mod = await import('mapbox-gl');
+        mapboxgl = mod.default as any;
+      }
+      (mapboxgl as any).accessToken = token;
 
     try {
       const { clientWidth, clientHeight } = mapContainer.current;
-      console.log("[map] container size before init", { clientWidth, clientHeight });
+      log.info("[map] container size before init", { clientWidth, clientHeight });
       let initZoom = 12;
       let initPitch = 0;
       let initBearing = 0;
@@ -119,7 +143,7 @@ export default function MapView({ user }: MapViewProps) {
           if (typeof parsed.bearing === "number") initBearing = parsed.bearing;
         }
       } catch {}
-    map.current = new mapboxgl.Map({
+    map.current = new (mapboxgl as any).Map({
       container: mapContainer.current,
         style: styleUrl,
         center: userCenter,
@@ -128,14 +152,14 @@ export default function MapView({ user }: MapViewProps) {
         bearing: initBearing,
         antialias: true,
         preserveDrawingBuffer: true as any,
-        dragRotate: true,
+        dragRotate: false,
         pitchWithRotate: true,
         attributionControl: false,
-        cooperativeGestures: false,
+        cooperativeGestures: true,
       });
-      map.current.addControl(new mapboxgl.NavigationControl({ showCompass: true, visualizePitch: true } as any), "top-left");
-      map.current.addControl(new mapboxgl.ScaleControl({ unit: "metric" }), "bottom-left");
-      map.current.addControl(new mapboxgl.AttributionControl({ compact: true }), "bottom-right");
+      map.current.addControl(new (mapboxgl as any).NavigationControl({ showCompass: true, visualizePitch: true } as any), "top-left");
+      map.current.addControl(new (mapboxgl as any).ScaleControl({ unit: "metric" }), "bottom-left");
+      map.current.addControl(new (mapboxgl as any).AttributionControl({ compact: true }), "bottom-right");
 
       // Observe container size and resize map to avoid blurriness/clipping
       try {
@@ -146,7 +170,12 @@ export default function MapView({ user }: MapViewProps) {
         (map.current as any)._resizeObserver = ro;
       } catch {}
 
-      // Interaction: no artificial bounds/limits to keep free 3D pan/zoom/tilt
+      // Bounds + zoom limits
+      try {
+        map.current.setMaxBounds([[-0.6, 51.2], [0.4, 51.75]] as any);
+        map.current.setMinZoom(8);
+        map.current.setMaxZoom(20);
+      } catch {}
 
       // Show a pin for the user's location and keep it updated
       try {
@@ -165,7 +194,8 @@ export default function MapView({ user }: MapViewProps) {
       geolocateRef.current = geolocate;
       // Enable rich interactions (rotate/pitch/scroll/keyboard/pan)
       try {
-        map.current.dragRotate.enable();
+        // Mobile-friendly: default disable one-finger rotate; allow two-finger rotate/zoom
+        map.current.dragRotate.disable();
         map.current.touchZoomRotate.enable();
         (map.current.touchZoomRotate as any)?.enableRotation?.();
         map.current.scrollZoom.enable();
@@ -181,7 +211,7 @@ export default function MapView({ user }: MapViewProps) {
       geolocate.on("geolocate", onUserLocate as any);
       mapHandlersRef.current.push({ type: "geolocate", handler: onUserLocate });
     } catch (err) {
-      console.error("[map] Failed to create Mapbox instance:", err);
+      log.error("[map] Failed to create Mapbox instance:", err);
       setError("Failed to create map. See console for details.");
       setIsLoading(false);
       return;
@@ -192,19 +222,19 @@ export default function MapView({ user }: MapViewProps) {
       setIsLoading(false);
     }, 12000);
     const quickId = window.setTimeout(() => {
-      console.warn("[map] quick-timeout:4s — releasing spinner before load/error");
+      log.warn("[map] quick-timeout:4s — releasing spinner before load/error");
       setIsLoading(false);
     }, 4000);
 
     map.current.on("load", async () => {
-      console.log("[map] event:load fired, styleLoaded=", map.current?.isStyleLoaded?.());
+      log.info("[map] event:load fired, styleLoaded=", map.current?.isStyleLoaded?.());
       setIsLoading(false);
       const mc = map.current!;
       mc.resize();
       try { mc.easeTo({ duration: 0 }); } catch {}
       // Apply code-only theme and terrain
       const themeCfg = styleKey === 'night' ? NIGHT_THEME : DEFAULT_THEME;
-      try { configureVisualTheme(mc, themeCfg, { isSatellite: styleKey === "satellite" }); } catch (e) { console.warn("[map] theme apply failed", e); }
+      try { configureVisualTheme(mc, themeCfg, { isSatellite: styleKey === "satellite" }); } catch (e) { log.warn("[map] theme apply failed", e); }
       try {
         if (!mc.getSource("mapbox-dem")) {
           mc.addSource("mapbox-dem", { type: "raster-dem", url: "mapbox://mapbox.mapbox-terrain-dem-v1", tileSize: 512, maxzoom: 14 } as any);
@@ -223,11 +253,11 @@ export default function MapView({ user }: MapViewProps) {
       if (canvas) {
         const onLost = (e: any) => {
           try { e?.preventDefault?.(); } catch {}
-          console.warn("[map] WebGL context lost — waiting for restore");
+          log.warn("[map] WebGL context lost — waiting for restore");
           setIsLoading(true);
         };
         const onRestored = () => {
-          console.warn("[map] WebGL context restored — triggering repaint");
+          log.warn("[map] WebGL context restored — triggering repaint");
           try { (map.current as any)?.triggerRepaint?.(); } catch {}
           setIsLoading(false);
         };
@@ -237,11 +267,7 @@ export default function MapView({ user }: MapViewProps) {
       }
     } catch {}
     const onError = (e: any) => {
-      if (process.env.NODE_ENV !== 'production') {
-        console.groupCollapsed('[map] error');
-        console.error(e);
-        console.groupEnd();
-      }
+      log.error('[map] error', e);
       setError("Map error occurred. See console for details.");
       setIsLoading(false);
       window.clearTimeout(timeoutId);
@@ -297,7 +323,7 @@ export default function MapView({ user }: MapViewProps) {
         if (!m.getSource("mapbox-dem")) {
           m.addSource("mapbox-dem", {
             type: "raster-dem",
-            url: "mapbox://mapbox.terrain-rgb",
+            url: "mapbox://mapbox.mapbox-terrain-dem-v1",
             tileSize: 512,
             maxzoom: 14,
           } as any);
@@ -317,6 +343,47 @@ export default function MapView({ user }: MapViewProps) {
         // 3D buildings (fill-extrusion)
         const layers = (m.getStyle() as any).layers || [];
         const labelLayerId = layers.find((l: any) => l.type === "symbol" && (l.layout || {})["text-field"])?.id;
+        // Subtle hillshade under roads
+        try {
+          const firstRoadId = layers.find((l: any) => typeof l?.["source-layer"] === 'string' && l?.["source-layer"].includes('road'))?.id;
+          if (!m.getLayer('ly-hillshade') && m.getSource('mapbox-dem')) {
+            m.addLayer({
+              id: 'ly-hillshade',
+              type: 'hillshade',
+              source: 'mapbox-dem',
+              minzoom: 9,
+              paint: {
+                'hillshade-exaggeration': 0.15,
+                'hillshade-shadow-color': '#000000',
+                'hillshade-highlight-color': '#ffffff',
+                'hillshade-accent-color': '#94a3b8',
+              }
+            } as any, firstRoadId || labelLayerId);
+          }
+        } catch {}
+        // Building outlines for crisper edges
+        try {
+          if (!m.getLayer("building-outlines")) {
+            m.addLayer({
+              id: "building-outlines",
+              type: "line",
+              source: "composite",
+              "source-layer": "building",
+              minzoom: 12,
+              paint: {
+                "line-color": "#334155",
+                "line-opacity": 0.35,
+                "line-width": [
+                  "interpolate", ["linear"], ["zoom"],
+                  12, 0.1,
+                  13, 0.2,
+                  14, 0.35,
+                  16, 0.6
+                ],
+              },
+            } as any, labelLayerId);
+          }
+        } catch {}
         if (!m.getLayer("3d-buildings")) {
           m.addLayer(
             {
@@ -432,6 +499,41 @@ export default function MapView({ user }: MapViewProps) {
           const cfg = styleKey === 'night' ? NIGHT_THEME : DEFAULT_THEME;
           configureVisualTheme(m, cfg, { isSatellite: styleKey === "satellite" });
         } catch {}
+        // Restore camera if saved
+        try {
+          const cam = lastCameraRef.current;
+          if (cam) {
+            m.jumpTo({ center: cam.center as any, zoom: cam.zoom, pitch: cam.pitch, bearing: cam.bearing } as any);
+          }
+        } catch {}
+        // Thames glow: try water then fallback to waterway, or skip gracefully
+        try {
+          if (!m.getLayer('ly-thames-glow')) {
+            const layersList = (m.getStyle() as any).layers || [];
+            const labelLayerId2 = layersList.find((l: any) => l.type === 'symbol' && (l.layout || {})['text-field'])?.id;
+            const waterCandidate = layersList.find((l: any) => l?.source === 'composite' && l?.['source-layer'] === 'water');
+            const waterwayCandidate = layersList.find((l: any) => l?.source === 'composite' && typeof l?.['source-layer'] === 'string' && l?.['source-layer'].includes('waterway'));
+            const srcLayer = waterCandidate ? 'water' : (waterwayCandidate ? waterwayCandidate['source-layer'] : null);
+            if (srcLayer) {
+              m.addLayer({
+                id: 'ly-thames-glow',
+                type: 'line',
+                source: 'composite',
+                'source-layer': srcLayer,
+                paint: {
+                  'line-color': '#60a5fa',
+                  'line-width': ['interpolate', ['linear'], ['zoom'], 10, 0.4, 14, 1.2],
+                  'line-blur': 1.0,
+                  'line-opacity': 0.25,
+                }
+              } as any, labelLayerId2);
+            } else {
+              log.warn('[map] Thames glow skipped: no water/waterway source-layer found');
+            }
+          }
+        } catch {}
+        // Mount registered custom layers/sources idempotently
+        try { mountAll(m); } catch {}
         // Collect themed layer matches for HUD (first 8 per category)
         try {
           const coll = (ids: string[]) => ids.filter((id) => !!m.getLayer(id)).slice(0, 8);
@@ -447,6 +549,7 @@ export default function MapView({ user }: MapViewProps) {
           });
         } catch {}
       } catch {}
+      try { m.once('idle', () => setIsSwitchingStyle(false)); } catch {}
     };
     m.on("style.load", onStyle);
     m.setStyle(styleUrl);
@@ -464,12 +567,20 @@ export default function MapView({ user }: MapViewProps) {
           .order("created_at", { ascending: false });
         
         if (error) {
-          console.error("[map] Failed to load places:", error);
+          log.error("[map] Failed to load places:", error);
+          try {
+            const { toastRetry } = await import('@/lib/toast');
+            toastRetry('Failed to load places', () => { loadPlaces(); });
+          } catch {}
         } else {
           setPlaces(places || []);
         }
       } catch (err) {
-        console.error("[map] Failed to load places:", err);
+        log.error("[map] Failed to load places:", err);
+        try {
+          const { toastRetry } = await import('@/lib/toast');
+          toastRetry('Failed to load places', () => { loadPlaces(); });
+        } catch {}
       }
     };
 
@@ -483,7 +594,7 @@ export default function MapView({ user }: MapViewProps) {
         "postgres_changes",
         { event: "*", schema: "public", table: "places" },
         (payload) => {
-          console.log("[map] Places updated:", payload);
+          log.info("[map] Places updated:", payload);
           // Reload places when any change occurs
           loadPlaces();
         }
@@ -509,13 +620,13 @@ export default function MapView({ user }: MapViewProps) {
       } as any);
       
       if (error) {
-        console.error("Failed to load nearby places:", error);
+        log.error("Failed to load nearby places:", error);
         setError("Failed to load nearby places");
       } else {
         setNearbyPlaces(nearby || []);
       }
     } catch (err) {
-      console.error("Failed to load nearby places:", err);
+      log.error("Failed to load nearby places:", err);
       setError("Failed to load nearby places");
     } finally {
       setIsLoadingNearby(false);
@@ -547,13 +658,7 @@ export default function MapView({ user }: MapViewProps) {
 
     const ensureLayers = () => {
       if (!m.getSource(sourceId)) {
-        m.addSource(sourceId, {
-          type: "geojson",
-          data: placesGeoJson as any,
-          cluster: true,
-          clusterRadius: 60,
-          clusterMaxZoom: 14,
-        } as any);
+        m.addSource(sourceId, { type: "geojson", data: { type: 'FeatureCollection', features: [] } as any } as any);
 
         m.addLayer({
           id: clusterLayer,
@@ -649,12 +754,30 @@ export default function MapView({ user }: MapViewProps) {
             .addTo(m);
         });
       } else {
-        (m.getSource(sourceId) as any).setData(placesGeoJson as any);
+        // no-op; data set via worker below
       }
     };
 
-    if (m.isStyleLoaded()) ensureLayers();
-    else m.once("load", ensureLayers);
+    if (m.isStyleLoaded()) ensureLayers(); else m.once("load", ensureLayers);
+
+    // Spin up worker and feed points for clustering off-thread
+    try {
+      if (workerRef.current) { workerRef.current.terminate(); workerRef.current = null; }
+      const w = new Worker(new URL('../workers/cluster.worker.js', import.meta.url));
+      workerRef.current = w;
+      w.onmessage = (evt: MessageEvent) => {
+        try { (m.getSource(sourceId) as any)?.setData?.(evt.data as any); } catch {}
+      };
+      const send = () => {
+        const z = m.getZoom();
+        const pts = (places || []).map(p => ({ lng: p.lng, lat: p.lat, properties: { title: p.title, description: p.description || '' } }));
+        w.postMessage({ points: pts, zoom: z });
+      };
+      send();
+      const onMove = () => send();
+      m.on('moveend', onMove);
+      mapHandlersRef.current.push({ type: 'moveend', handler: onMove });
+    } catch {}
   }, [placesGeoJson, styleUrl, SHOW_PLACES]);
 
   // Nearby layer (non-clustered)
@@ -767,7 +890,7 @@ export default function MapView({ user }: MapViewProps) {
 
   // onSubmitPlace and related modal handlers removed
 
-  return (
+    return (
     <div className="relative h-screen">
       {/* Style switcher + Theme HUD */}
       <div className="absolute top-4 left-4 z-30 bg-white/80 backdrop-blur px-2 py-1 rounded shadow pointer-events-none">
@@ -820,10 +943,15 @@ export default function MapView({ user }: MapViewProps) {
       {isLoading && (
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="text-center bg-white/70 rounded-md p-3 shadow">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
-            <p className="mt-2 text-gray-600">Loading map...</p>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
+          <p className="mt-2 text-gray-600">Loading map...</p>
             {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
-          </div>
+        </div>
+      </div>
+      )}
+      {isSwitchingStyle && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div className="text-center bg-white/70 rounded-md p-2 shadow text-sm">Switching style…</div>
         </div>
       )}
       

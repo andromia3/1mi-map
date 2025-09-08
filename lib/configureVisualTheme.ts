@@ -24,7 +24,8 @@ export function configureVisualTheme(map: mapboxgl.Map, cfg: MapStyleConfig, opt
   const applyLabels = () => {
     // Labels and halos (lightweight, first)
     safePaint(map, "place-label", "text-halo-color", cfg.palette.labelHalo);
-    safePaint(map, "place-label", "text-halo-width", cfg.labels.haloWidth);
+    // Slightly stronger halo for better mid-zoom legibility
+    try { safePaint(map, "place-label", "text-halo-width", (Number(cfg.labels.haloWidth) || 1.0) + 0.2 as any); } catch { safePaint(map, "place-label", "text-halo-width", cfg.labels.haloWidth); }
     safePaint(map, "poi-label", "text-size", ramp(cfg.labels.poiTextSize));
     // Hide default Mapbox POI blue icons to keep map minimal
     safePaint(map, "poi-label", "icon-opacity", 0 as any);
@@ -41,6 +42,14 @@ export function configureVisualTheme(map: mapboxgl.Map, cfg: MapStyleConfig, opt
     // Transit visibility can go early
     safeLayout(map, "transit-line", "minzoom", cfg.transit.minZoom as any);
     safePaint(map, "transit-line", "line-opacity", ramp(cfg.transit.lineOpacity));
+    // Reduce POI density around z12–13 by disabling overlap and increasing spacing
+    try {
+      safeLayout(map, "poi-label", "text-allow-overlap", false as any);
+      // Use a spacing ramp to reduce clutter at mid-zoom
+      safeLayout(map, "poi-label", "symbol-spacing", ramp({ 12: 350, 13: 240, 14: 140, 16: 100 }) as any);
+      // Slight padding helps collision detection
+      safeLayout(map, "poi-label", "text-padding", ramp({ 12: 4, 13: 3, 14: 2, 16: 1 }) as any);
+    } catch {}
     // Waterway labels: halo and spacing for legibility
     safePaint(map, "waterway-label", "text-halo-color", cfg.palette.labelHalo);
     safePaint(map, "waterway-label", "text-halo-width", 1.2 as any);

@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase/server";
-import MapView from "@/components/MapView";
+import dynamic from "next/dynamic";
+const Map1MI = dynamic(() => import("@/components/Map1MI"), { ssr: false });
+import MapErrorBoundary from "@/components/MapErrorBoundary";
 import Topbar from "@/components/Topbar";
 
 export default async function MapPage() {
@@ -15,7 +17,9 @@ export default async function MapPage() {
   return (
     <>
       <Topbar displayName={user.user_metadata?.display_name || user.email || null} />
-      <MapView user={user} />
+      <MapErrorBoundary>
+        <Map1MI user={user} />
+      </MapErrorBoundary>
     </>
   );
 }

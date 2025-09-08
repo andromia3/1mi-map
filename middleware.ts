@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs";
+import { log } from "@/src/lib/log";
 
 let hasLoggedProfileCheckError = false;
 
-export const config = { matcher: ["/map", "/map/:path*"] };
+export const config = { matcher: ["/((?!_next/|api/|login|signup|favicon|assets).*)"] };
 
 export async function middleware(req: NextRequest) {
   const url = new URL(req.url);
@@ -26,7 +27,7 @@ export async function middleware(req: NextRequest) {
     return res;
   }
 
-  const isProtected = url.pathname === "/map" || url.pathname.startsWith("/map/");
+  const isProtected = true;
 
   if (isProtected && !session) {
     const login = new URL("/login", url.origin);
@@ -34,12 +35,21 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(login);
   }
 
-  // Fail-open profile completeness check: redirect only when explicitly incomplete
+  // Fail-open profile completeness check in code (no DB RPC)
   if (isProtected && session) {
     try {
-      const { data, error } = await supabase.rpc("profile_is_complete");
+      const { data: profile, error } = await supabase
+        .from("profiles")
+        .select("display_name, city, timezone")
+        .eq("id", session.user.id)
+        .maybeSingle();
       if (error) throw error;
-      const complete = typeof data === "boolean" ? data : Boolean((data as any)?.complete);
+      const complete = Boolean(
+        profile &&
+        String(profile.display_name || "").trim() &&
+        String(profile.city || "").trim() &&
+        String(profile.timezone || "").trim()
+      );
       if (!complete) {
         const onboarding = new URL("/onboarding", url.origin);
         onboarding.searchParams.set("redirect", url.pathname);
@@ -47,12 +57,10 @@ export async function middleware(req: NextRequest) {
       }
     } catch (e) {
       if (!hasLoggedProfileCheckError && process.env.NODE_ENV !== "production") {
-        // eslint-disable-next-line no-console
-        console.warn("[middleware] profile_is_complete failed; allowing request", e);
+        log.warn("[middleware] profile completeness check failed; allowing request", e);
         hasLoggedProfileCheckError = true;
       }
-      // Allow request to proceed on error
-      return res;
+      return res; // fail-open
     }
   }
 

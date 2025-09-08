@@ -95,6 +95,7 @@ export default function LoginForm() {
 
           <div className="mt-6 text-sm text-gray-600">
             <p className="text-center">Sign in with your email and password</p>
+            <p className="text-center mt-2">No account? <a href="/signup" className="text-blue-600 underline">Create one</a></p>
           </div>
         </CardContent>
       </Card>

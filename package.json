@@ -8,17 +8,26 @@
   "scripts": {
     "dev": "next dev",
     "build": "node scripts/verify-clean.js && next build && node scripts/verify-postbuild.js",
+    "analyze": "ANALYZE=true next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write .",
     "verify-clean": "node scripts/verify-clean.js",
+    "test": "vitest run",
     "test:e2e": "playwright test",
     "test:unit": "vitest run",
+    "e2e": "playwright test",
     "db:link": "npx supabase link",
+    "db:push": "npx supabase db push",
     "db:pull": "npx supabase db pull --schema public --file supabase/schema.sql",
     "db:new": "npx supabase migration new",
     "db:diff": "npx supabase db diff -f auto",
     "db:migrate:local": "npx supabase db reset",
-    "db:types": "npx supabase gen types typescript --linked --schema public > src/types/supabase.ts"
+    "db:types": "npx supabase gen types typescript --linked --schema public > lib/supabase/types.ts",
+    "db:compose": "node DB_MIGRATIONS/compose/build.js",
+    "db:audit": "node DB_MIGRATIONS/tools/audit-schema.js",
+    "seed:dev": "node scripts/seed.dev.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.3.2",
@@ -43,6 +52,7 @@
     "react-error-boundary": "^4.0.13"
   },
   "devDependencies": {
+    "@next/bundle-analyzer": "^14.2.5",
     "@playwright/test": "^1.47.2",
     "vitest": "^2.0.5",
     "@types/mapbox-gl": "^3.4.1",
@@ -53,6 +63,11 @@
     "autoprefixer": "^10.0.1",
     "eslint": "^8",
     "eslint-config-next": "14.0.4",
+    "@typescript-eslint/parser": "^7.18.0",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "eslint-plugin-unused-imports": "^3.2.0",
+    "eslint-plugin-import": "^2.29.1",
+    "prettier": "^3.3.3",
     "postcss": "^8",
     "tailwindcss": "^3.3.0",
     "typescript": "^5.9.2"

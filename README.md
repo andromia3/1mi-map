@@ -161,6 +161,37 @@ Visit [http://localhost:3000](http://localhost:3000) and:
 2. **Sign in** with your credentials
 3. **Explore the map** and add your first place!
 
+## ✅ First‑Run Checklist (≈10 minutes)
+
+1) Environment
+- Copy `env.example` → `.env.local`
+- Set: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_MAPBOX_TOKEN` (and `MAPBOX_TOKEN` if desired)
+
+2) Install & run
+```bash
+npm i
+npm run dev
+```
+
+3) Auth & onboarding
+- Go to `/login` → create or sign in
+- If redirected to `/onboarding`, fill: Display name, City, Timezone → Finish → lands on `/map`
+
+4) Map usage & styles
+- Switch style via the control (top‑left) or URL: `/map?style=default|night|satellite`
+- Camera + style persist locally for instant reloads
+
+5) Seed demo data (optional, local/dev)
+- Requires: `SUPABASE_SERVICE_ROLE`, `SEED_PROJECT_REF`, `SEED_USER_ID`
+- Run: `npm run seed:dev` (inserts a few places/meetup/event)
+
+6) Known gotchas
+- Mapbox: invalid token → blank map. Ensure `NEXT_PUBLIC_MAPBOX_TOKEN` is set
+- Supabase URL/key mismatch → auth fails. Verify `.env.local` values
+- Playwright E2E requires setting `E2E_USER_EMAIL`/`E2E_USER_PASSWORD` to run locally
+- If style switches feel jumpy, ensure only a single import of `mapbox-gl.css` (we load it in `app/layout.tsx`)
+
+
 ## 📁 Project Structure
 
 ```

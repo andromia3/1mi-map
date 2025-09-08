@@ -44,8 +44,8 @@ export const NIGHT_THEME: MapStyleConfig = {
 };
 
 export const STYLE_URLS = {
-  default: 'mapbox://styles/mapbox/standard',
-  night: 'mapbox://styles/mapbox/standard',
+  default: 'mapbox://styles/mapbox/light-v11',
+  night: 'mapbox://styles/mapbox/dark-v11',
   satellite: 'mapbox://styles/mapbox/satellite-streets-v12',
 } as const;
 
