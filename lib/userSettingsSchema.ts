@@ -46,9 +46,9 @@ export function mergeSettings(defaults: UserSettings, db: unknown): UserSettings
   try {
     const parsed = userSettingsSchema.deepPartial().parse(db || {});
     return {
-      profile: { ...defaults.profile, ...(parsed.profile || {}) },
-      privacy: { ...defaults.privacy, ...(parsed.privacy || {}) },
-      map: { ...defaults.map, ...(parsed.map || {}) },
+      profile: { ...defaults.profile, ...(parsed.profile || {}) } as UserSettings['profile'],
+      privacy: { ...defaults.privacy, ...(parsed.privacy || {}) } as UserSettings['privacy'],
+      map: { ...defaults.map, ...(parsed.map || {}) } as UserSettings['map'],
     };
   } catch (e) {
     if (process.env.NODE_ENV !== 'production') {

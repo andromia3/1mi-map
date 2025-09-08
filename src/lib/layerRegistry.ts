@@ -12,7 +12,10 @@ export function registerSource(def: SourceDef) {
 }
 
 export function registerLayer(def: LayerDef, beforeId?: string) {
-  if (!layerRegistry.find((l) => l.def?.id === def?.id)) layerRegistry.push({ def, beforeId });
+  if (!layerRegistry.find((l) => l.def?.id === def?.id)) {
+    if (beforeId === undefined) layerRegistry.push({ def });
+    else layerRegistry.push({ def, beforeId });
+  }
 }
 
 export function clearRegistry() {

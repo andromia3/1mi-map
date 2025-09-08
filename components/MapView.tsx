@@ -112,6 +112,7 @@ export default function MapView({ user }: MapViewProps) {
   // Initialize map when we know the center
   useEffect(() => {
     if (!mapContainer.current || map.current || userCenter === null) return;
+    let cleanup: (() => void) | undefined;
 
     // Ensure Mapbox token exists
     const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "pk.eyJ1IjoiYW5kcm9taWEiLCJhIjoiY21mOXA0eWphMDlpODJscW9weWlvNXB0biJ9.lt-cpkt9IgVZwigPpimEBw";
@@ -129,7 +130,7 @@ export default function MapView({ user }: MapViewProps) {
       (mapboxgl as any).accessToken = token;
 
     try {
-      const { clientWidth, clientHeight } = mapContainer.current;
+      const { clientWidth, clientHeight } = mapContainer.current as HTMLDivElement;
       log.info("[map] container size before init", { clientWidth, clientHeight });
       let initZoom = 12;
       let initPitch = 0;
@@ -157,50 +158,51 @@ export default function MapView({ user }: MapViewProps) {
         attributionControl: false,
         cooperativeGestures: true,
       });
-      map.current.addControl(new (mapboxgl as any).NavigationControl({ showCompass: true, visualizePitch: true } as any), "top-left");
-      map.current.addControl(new (mapboxgl as any).ScaleControl({ unit: "metric" }), "bottom-left");
-      map.current.addControl(new (mapboxgl as any).AttributionControl({ compact: true }), "bottom-right");
+      const mc = map.current as any;
+      mc.addControl(new (mapboxgl as any).NavigationControl({ showCompass: true, visualizePitch: true } as any), "top-left");
+      mc.addControl(new (mapboxgl as any).ScaleControl({ unit: "metric" }), "bottom-left");
+      mc.addControl(new (mapboxgl as any).AttributionControl({ compact: true }), "bottom-right");
 
       // Observe container size and resize map to avoid blurriness/clipping
       try {
         const ro = new ResizeObserver(() => {
-          try { map.current?.resize(); } catch {}
+          try { (mc as any)?.resize?.(); } catch {}
         });
         ro.observe(mapContainer.current!);
-        (map.current as any)._resizeObserver = ro;
+        (mc as any)._resizeObserver = ro;
       } catch {}
 
       // Bounds + zoom limits
       try {
-        map.current.setMaxBounds([[-0.6, 51.2], [0.4, 51.75]] as any);
-        map.current.setMinZoom(8);
-        map.current.setMaxZoom(20);
+        mc.setMaxBounds([[-0.6, 51.2], [0.4, 51.75]] as any);
+        mc.setMinZoom(8);
+        mc.setMaxZoom(20);
       } catch {}
 
       // Show a pin for the user's location and keep it updated
       try {
         userMarker.current?.remove();
-        userMarker.current = new mapboxgl.Marker({ color: "#2563eb" })
+        userMarker.current = new (mapboxgl as any).Marker({ color: "#2563eb" })
           .setLngLat(userCenter as [number, number])
-          .addTo(map.current);
+          .addTo(mc);
       } catch {}
 
-      const geolocate = new mapboxgl.GeolocateControl({
+      const geolocate = new (mapboxgl as any).GeolocateControl({
         positionOptions: { enableHighAccuracy: true },
         trackUserLocation: true,
         showUserHeading: true,
       });
-      map.current.addControl(geolocate, "top-left");
+      mc.addControl(geolocate, "top-left");
       geolocateRef.current = geolocate;
       // Enable rich interactions (rotate/pitch/scroll/keyboard/pan)
       try {
         // Mobile-friendly: default disable one-finger rotate; allow two-finger rotate/zoom
-        map.current.dragRotate.disable();
-        map.current.touchZoomRotate.enable();
-        (map.current.touchZoomRotate as any)?.enableRotation?.();
-        map.current.scrollZoom.enable();
-        map.current.keyboard.enable();
-        map.current.dragPan.enable();
+        mc.dragRotate.disable();
+        mc.touchZoomRotate.enable();
+        (mc.touchZoomRotate as any)?.enableRotation?.();
+        mc.scrollZoom.enable();
+        mc.keyboard.enable();
+        mc.dragPan.enable();
       } catch {}
       const onUserLocate = (evt: any) => {
         try {
@@ -226,7 +228,7 @@ export default function MapView({ user }: MapViewProps) {
       setIsLoading(false);
     }, 4000);
 
-    map.current.on("load", async () => {
+    map.current?.on("load", async () => {
       log.info("[map] event:load fired, styleLoaded=", map.current?.isStyleLoaded?.());
       setIsLoading(false);
       const mc = map.current!;
@@ -273,11 +275,11 @@ export default function MapView({ user }: MapViewProps) {
       window.clearTimeout(timeoutId);
       window.clearTimeout(quickId);
     };
-    map.current.on("error", onError);
+    map.current?.on("error", onError);
     mapHandlersRef.current.push({ type: "error", handler: onError });
 
 
-    return () => {
+    cleanup = () => {
       if (map.current) {
         try { (map.current as any)._resizeObserver?.disconnect?.(); } catch {}
         try {
@@ -311,6 +313,9 @@ export default function MapView({ user }: MapViewProps) {
       window.clearTimeout(timeoutId);
       window.clearTimeout(quickId);
     };
+    })();
+
+    return () => { cleanup?.(); };
   }, [userCenter]);
 
   // When style changes, apply it and reconfigure layers/terrain/3D
@@ -748,7 +753,7 @@ export default function MapView({ user }: MapViewProps) {
           if (!f) return;
           const coords = f.geometry.coordinates as [number, number];
           const { title, description, addedBy } = f.properties || {};
-          new mapboxgl.Popup({ offset: 25 })
+          new (mapboxgl as any).Popup({ offset: 25 })
             .setLngLat(coords)
             .setHTML(`<div class="p-2"><h3 class="font-semibold text-sm">${title || "Untitled"}</h3>${description ? `<p class=\"text-xs text-gray-600 mt-1\">${description}</p>` : ""}<p class="text-xs text-gray-500 mt-2">Added by ${addedBy || "unknown"}</p></div>`)
             .addTo(m);

@@ -39,7 +39,8 @@ export function useMyProfile() {
   async function update(fields: Partial<MyProfile>) {
     // Optimistic update with rollback
     const supabase = supabaseBrowser();
-    await mutate(async (current) => {
+    await mutate(async (currentData) => {
+      const current = (currentData ?? null) as MyProfile | null;
       const optimistic = current ? { ...current, ...fields } : (fields as MyProfile);
       const { data: sessionRes } = await supabase.auth.getSession();
       const uid = sessionRes.session?.user?.id;

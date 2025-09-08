@@ -24,9 +24,9 @@ export async function getMyProfile(): Promise<Result<ProfileRow | null>> {
     const { data: { session } } = await supabase.auth.getSession();
     const uid = session?.user?.id;
     if (!uid) return { ok: true, data: null };
-    const { data, error } = await supabase
+    const { data, error } = await (supabase
       .from("profiles")
-      .select("id, display_name, city, timezone, image_url, bio, linkedin_url, instagram_url, x_url, youtube_url, website_url")
+      .select("id, display_name, city, timezone, image_url, bio, linkedin_url, instagram_url, x_url, youtube_url, website_url") as any)
       .eq("id", uid)
       .maybeSingle();
     if (error) return { ok: false, error: error.message };
@@ -43,10 +43,10 @@ export async function upsertMyProfile(fields: Partial<ProfileRow>): Promise<Resu
     const uid = session?.user?.id;
     if (!uid) return { ok: false, error: "Not authenticated" };
     const payload = { id: uid, ...fields } as any;
-    const { data, error } = await supabase
+    const { data, error } = await (supabase
       .from("profiles")
       .upsert(payload, { onConflict: "id" })
-      .select("id, display_name, city, timezone, image_url, bio, linkedin_url, instagram_url, x_url, youtube_url, website_url")
+      .select("id, display_name, city, timezone, image_url, bio, linkedin_url, instagram_url, x_url, youtube_url, website_url") as any)
       .eq("id", uid)
       .maybeSingle();
     if (error) return { ok: false, error: error.message };
