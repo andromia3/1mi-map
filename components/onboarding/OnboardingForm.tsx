@@ -152,7 +152,13 @@ export default function OnboardingForm() {
     if (!valid) return;
     const v = form3.getValues();
     setSavingStep(true);
+    // Final save with ALL required fields to avoid read-after-write races
+    const f1 = form1.getValues();
+    const f2 = form2.getValues();
     const ok = await savePartial({
+      display_name: (f1.display_name || "").trim(),
+      city: (f2.city || "").trim(),
+      timezone: (f2.timezone || "").trim(),
       bio: (v.bio || "").trim() || null,
       linkedin_url: (v.linkedin_url || "").trim() || null,
       instagram_url: (v.instagram_url || "").trim() || null,
@@ -166,16 +172,24 @@ export default function OnboardingForm() {
       const { data: { session } } = await supabase.auth.getSession();
       const uid = session?.user?.id;
       if (!uid) { window.location.href = "/login"; return; }
-      // Re-check completeness after a short delay to avoid read-after-write staleness
-      await new Promise((r) => setTimeout(r, 150));
-      const { data: p } = await supabase.from("profiles").select("display_name, city, timezone").eq("id", uid).maybeSingle();
-      const complete = Boolean(p && String(p.display_name||"").trim() && String(p.city||"").trim() && String(p.timezone||"").trim());
-      if (complete) {
+      // Client-side completeness check first to avoid false negatives
+      const completeLocal = Boolean((f1.display_name||"").trim() && (f2.city||"").trim() && (f2.timezone||"").trim());
+      if (completeLocal) {
         try { localStorage.removeItem(DRAFT_KEY); } catch {}
         toast.success("Profile completed");
         window.location.href = "/map";
       } else {
-        toast("Profile incomplete; please finish required fields");
+        // As a fallback, re-check from DB after a brief delay
+        await new Promise((r) => setTimeout(r, 200));
+        const { data: p } = await supabase.from("profiles").select("display_name, city, timezone").eq("id", uid).maybeSingle();
+        const complete = Boolean(p && String(p.display_name||"").trim() && String(p.city||"").trim() && String(p.timezone||"").trim());
+        if (complete) {
+          try { localStorage.removeItem(DRAFT_KEY); } catch {}
+          toast.success("Profile completed");
+          window.location.href = "/map";
+        } else {
+          toast("Profile incomplete; please finish required fields");
+        }
       }
     } catch {
       window.location.href = "/map";

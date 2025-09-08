@@ -48,12 +48,10 @@ export async function middleware(req: NextRequest) {
         .eq("id", session.user.id)
         .maybeSingle();
       if (error) throw error;
-      const complete = Boolean(
-        profile &&
-        String(profile.display_name || "").trim() &&
-        String(profile.city || "").trim() &&
-        String(profile.timezone || "").trim()
-      );
+      const displayNameOk = typeof profile?.display_name === 'string' && profile.display_name.trim().length > 0;
+      const cityOk = typeof profile?.city === 'string' && profile.city.trim().length > 0;
+      const tzOk = typeof profile?.timezone === 'string' && profile.timezone.trim().length > 0;
+      const complete = displayNameOk && cityOk && tzOk;
       if (!complete) {
         const onboarding = new URL("/onboarding", url.origin);
         onboarding.searchParams.set("redirect", url.pathname);
