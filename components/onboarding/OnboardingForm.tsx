@@ -14,7 +14,14 @@ import { supabaseBrowser } from "@/lib/supabase/browser";
 import { toast } from "@/lib/toast";
 import { log } from "@/src/lib/log";
 
-const step1Schema = z.object({ display_name: z.string().min(1, "Required"), image_url: z.string().url("Must be a valid URL").optional().or(z.literal("")) });
+const step1Schema = z.object({
+  display_name: z.string().min(1, "Required"),
+  first_name: z.string().optional().or(z.literal("")),
+  last_name: z.string().optional().or(z.literal("")),
+  phone_number: z.string().optional().or(z.literal("")),
+  country: z.string().optional().or(z.literal("")),
+  image_url: z.string().url("Must be a valid URL").optional().or(z.literal("")),
+});
 const step2Schema = z.object({ city: z.string().min(1, "Required"), timezone: z.string().min(1, "Required") });
 type Step1 = z.infer<typeof step1Schema>;
 type Step2 = z.infer<typeof step2Schema>;
@@ -36,7 +43,7 @@ export default function OnboardingForm() {
   const debounceRef = useRef<number | null>(null);
   const usernameRef = useRef<HTMLInputElement | null>(null);
 
-  const form1 = useForm<Step1>({ resolver: zodResolver(step1Schema), defaultValues: { display_name: "", image_url: "" } });
+  const form1 = useForm<Step1>({ resolver: zodResolver(step1Schema), defaultValues: { display_name: "", first_name: "", last_name: "", phone_number: "", country: "", image_url: "" } });
   const form2 = useForm<Step2>({ resolver: zodResolver(step2Schema), defaultValues: { city: "", timezone: "" } });
   const form3 = useForm<Step3>({ resolver: zodResolver(step3Schema), defaultValues: { bio: "", linkedin_url: "", instagram_url: "", x_url: "", youtube_url: "", website_url: "" } });
 
@@ -54,7 +61,14 @@ export default function OnboardingForm() {
         if (!row) {
           await supabase.from("profiles").insert({ id: userId } as any);
         } else {
-          form1.reset({ display_name: row.display_name || "", image_url: (row as any).image_url || "" });
+          form1.reset({
+            display_name: row.display_name || "",
+            first_name: (row as any).first_name || "",
+            last_name: (row as any).last_name || "",
+            phone_number: (row as any).phone_number || "",
+            country: (row as any).country || "",
+            image_url: (row as any).image_url || "",
+          });
           form2.reset({ city: (row as any).city || "", timezone: (row as any).timezone || Intl.DateTimeFormat().resolvedOptions().timeZone });
           form3.reset({ bio: (row as any).bio || "", linkedin_url: (row as any).linkedin_url || "", instagram_url: (row as any).instagram_url || "", x_url: (row as any).x_url || "", youtube_url: (row as any).youtube_url || "", website_url: (row as any).website_url || "" });
         }
@@ -129,7 +143,14 @@ export default function OnboardingForm() {
     if (!valid) return;
     const values = form1.getValues();
     setSavingStep(true);
-    const ok = await savePartial({ display_name: values.display_name.trim(), image_url: (values.image_url || "").trim() || null });
+    const ok = await savePartial({
+      display_name: values.display_name.trim(),
+      first_name: (values.first_name || "").trim() || null,
+      last_name: (values.last_name || "").trim() || null,
+      phone_number: (values.phone_number || "").trim() || null,
+      country: (values.country || "").trim() || null,
+      image_url: (values.image_url || "").trim() || null,
+    });
     if (ok) { toast.success("Saved"); setStep(2); } else { toast.error("Save failed"); }
     setSavingStep(false);
   };
@@ -213,6 +234,26 @@ export default function OnboardingForm() {
             <Label htmlFor="display_name">Display name</Label>
             <Input id="display_name" {...form1.register("display_name")} autoFocus />
             {form1.formState.errors.display_name && <p className="text-sm text-red-600 mt-1">{form1.formState.errors.display_name.message}</p>}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="first_name">First name</Label>
+              <Input id="first_name" {...form1.register("first_name", { onBlur: () => scheduleSave({ first_name: (form1.getValues("first_name")||"").trim() || null }) })} />
+            </div>
+            <div>
+              <Label htmlFor="last_name">Last name</Label>
+              <Input id="last_name" {...form1.register("last_name", { onBlur: () => scheduleSave({ last_name: (form1.getValues("last_name")||"").trim() || null }) })} />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="phone_number">Phone</Label>
+              <Input id="phone_number" placeholder="+44 7000 000000" {...form1.register("phone_number", { onBlur: () => scheduleSave({ phone_number: (form1.getValues("phone_number")||"").trim() || null }) })} />
+            </div>
+            <div>
+              <Label htmlFor="country">Country</Label>
+              <Input id="country" placeholder="United Kingdom" {...form1.register("country", { onBlur: () => scheduleSave({ country: (form1.getValues("country")||"").trim() || null }) })} />
+            </div>
           </div>
           <div>
             <Label htmlFor="image_url">Avatar URL</Label>
